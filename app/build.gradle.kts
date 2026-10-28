@@ -1,6 +1,37 @@
+import com.android.build.api.artifact.SingleArtifact
+import javax.xml.parsers.DocumentBuilderFactory
+import org.w3c.dom.Element
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+// Validate the merged result, so dependency manifests or API caps cannot silently
+// remove Nearby's normal Wi-Fi permissions from modern devices again.
+androidComponents.onVariants(androidComponents.selector().withBuildType("debug")) { variant ->
+    val mergedManifest = variant.artifacts.get(SingleArtifact.MERGED_MANIFEST)
+    val verify = tasks.register("verifyDebugNearbyPermissions") {
+        inputs.file(mergedManifest)
+        doLast {
+            val factory = DocumentBuilderFactory.newInstance().apply {
+                isNamespaceAware = true
+                setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+            }
+            val document = factory.newDocumentBuilder().parse(mergedManifest.get().asFile)
+            val nodes = document.getElementsByTagName("uses-permission")
+            val namespace = "http://schemas.android.com/apk/res/android"
+            for (permission in listOf("ACCESS_WIFI_STATE", "CHANGE_WIFI_STATE")) {
+                val matches = (0 until nodes.length).map { nodes.item(it) as Element }
+                    .filter { it.getAttributeNS(namespace, "name") == "android.permission.$permission" }
+                check(matches.size == 1 && matches.single().getAttributeNS(namespace, "maxSdkVersion").isEmpty()) {
+                    "Nearby requires uncapped $permission in the merged manifest (including API 35/37)."
+                }
+            }
+            println("Nearby merged-manifest Wi-Fi permissions verified for modern Android APIs.")
+        }
+    }
+    tasks.matching { it.name == "assembleDebug" }.configureEach { dependsOn(verify) }
 }
 
 android {
@@ -10,8 +41,8 @@ android {
         applicationId = "dev.touchbridge"
         minSdk = 26
         targetSdk = 37
-        versionCode = 4
-        versionName = "0.2.1"
+        versionCode = 5
+        versionName = "0.2.2"
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions {

@@ -52,6 +52,14 @@ Nearby 19.5.1's metadata could not be read by the original Kotlin 2.2.10 compile
 
 ## Remaining work
 
+### v0.2.2 — confirmed Wi-Fi manifest defect
+
+The developer's Pixel recording shows **8033 / MISSING_PERMISSION_CHANGE_WIFI_STATE**, TouchBridge 0.2.1, API 37, Play services 26.40.32, and no missing runtime permissions. The app manifest capped this normal permission at API 32, excluding the Pixel. The cap is removed; no additional runtime permission or Settings toggle is requested. A build task now verifies the merged manifest contains uncapped ACCESS_WIFI_STATE and CHANGE_WIFI_STATE, and assembleDebug depends on it.
+
+The Samsung recording shows **API 35** and a generic startup message; the developer subsequently confirmed **0.2.1 on both phones**. A later typed report gives API 25/27, which conflicts with the recorded API 35/37 diagnostics; keep that discrepancy explicit rather than infer an app-version mismatch from layout alone. Both recordings also show successful standalone NFC exchanges in the two roles. Install the same 0.2.2 APK on both devices for the next Nearby test. No successful Nearby connection is claimed from these recordings.
+
+The correction stays on `fix/nearby-startup-diagnostics`; main and the device-verified NFC checkpoint are untouched. Windows debug build, **50 unit tests** and lint passed. The merged-manifest check passed; deliberately restoring the original cap made it fail, and restoring the fix made it pass again. APK inspection confirms CHANGE_WIFI_STATE has no maxSdkVersion, version 0.2.2 (5), and valid debug signature. GitHub CI and a fresh two-device test are separate checks. The videos/frames stay outside Git.
+
 ### v0.2.1 startup investigation
 
 Developer screenshots show Nearby startup failure on one phone followed by NFC `idle or expired` on the other. The startup failure path invalidates the NFC session; the second error is consistent with that cleanup. The screenshots contain no SDK status code, so the actual radio/service/permission failure is **not yet diagnosed**. No additional runtime permissions are being requested on speculation.
