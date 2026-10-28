@@ -10,6 +10,8 @@ The app shows a real reader result only after SELECT and GET_SESSION both succee
 
 ## Connect with Nearby
 
+Experimental startup fix: v0.2.1 on `fix/nearby-startup-diagnostics` waits for advertising success before enabling NFC. Wait for **Ready to tap** on the advertiser. If startup fails, report the specific Nearby status code plus **Show diagnostics** (API, Play services version, missing permissions). The generic v0.2.0 error did not retain enough information to identify the phone-specific cause.
+
 Install the same APK on both phones, unlock them, and enable NFC, Bluetooth and Wi-Fi. Keep TouchBridge foregrounded. No internet connection or shared router is required. Google Play services must be available; old Android versions also need system Location enabled for discovery.
 
 1. On **Connect**, choose **Advertise + emulate** on one phone. Approve the runtime permissions; the app starts a fresh 60-second session after permission approval.
@@ -105,6 +107,8 @@ Leaving the app or rotating deliberately stops the current role. Restart explici
 | Storage, contacts, background location | Not requested | Files/contacts/background sharing are not part of this milestone |
 
 ## Git, CI and delivery
+
+New work uses separate feature/fix branches and device-tested changes are merged only after developer confirmation. `stable/nfc-verified` preserves the device-tested v0.1.1 NFC implementation at `2cb24ec`. `main` stays unchanged while `fix/nearby-startup-diagnostics` is tested. Phone screenshots/attachments are ignored by Git.
 
 The private repository is [darshfi/TouchBridge](https://github.com/darshfi/TouchBridge). The Gradle wrapper and its distribution SHA-256 are checked in. CI (`.github/workflows/android-ci.yml`) uses an Ubuntu runner, JDK 21, Android SDK, wrapper validation/caching via setup-gradle, unit tests, lint and a debug build. After success, **touchbridge-debug** is available under the workflow run's Artifacts for seven days. Reports are uploaded even on failure. Check [Actions](https://github.com/darshfi/TouchBridge/actions/workflows/android-ci.yml) for the actual result for each commit. No Play deployment or production signing exists.
 

@@ -45,6 +45,20 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
                     lastNearbyPhase = connection.phase
                     Log.i("TouchBridgeNearby", "State: ${connection.phase}")
                 }
+                if (wireless && connection.phase == NearbyPhase.ADVERTISING && _state.value.role == Role.IDLE) {
+                    val generation = emulationGeneration
+                    if (generation != null && NfcSessionRepository.sessions.activate(generation)) {
+                        _state.value = LabState(Role.EMULATE, "Ready to tap", "Nearby is advertising. Tap the other phone in Scan + connect mode.",
+                            (NfcSessionRepository.sessions.remainingMillis() + 999) / 1000)
+                    }
+                }
+                if (wireless && connection.phase == NearbyPhase.ERROR) {
+                    wireless = false
+                    emulationGeneration = null
+                    NfcSessionRepository.sessions.stop()
+                    reader.close()
+                    _state.value = LabState(title = "Nearby setup or connection failed", detail = "Read the Nearby error above. Start a fresh session after resolving it.")
+                }
                 if (wireless && _state.value.role != Role.IDLE && connection.phase in setOf(NearbyPhase.CONNECTED, NearbyPhase.ERROR)) {
                     // Preserve the Nearby result while releasing NFC routing and invalidating its token.
                     emulationGeneration = null
@@ -78,12 +92,13 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
         }
         wireless = useNearby
         if (role == Role.EMULATE) {
-            NfcSessionRepository.sessions.start()
+            NfcSessionRepository.sessions.start(serveImmediately = !useNearby)
             emulationGeneration = NfcSessionRepository.sessions.generation
         }
         if (role == Role.SCAN) reader.activate()
         _state.value = when (role) {
-            Role.EMULATE -> LabState(role, "Hold phones together", "On the other phone, choose Scan. Keep both screens unlocked.", 60)
+            Role.EMULATE -> if (useNearby) LabState(title = "Starting Nearby…", detail = "Wait for Ready to tap before touching the phones.")
+                else LabState(role, "Hold phones together", "On the other phone, choose Scan. Keep both screens unlocked.", 60)
             Role.SCAN -> LabState(role, "Hold phones together", "On the other phone, choose Emulate. Align the NFC antennas on the backs of the phones.")
             Role.IDLE -> LabState()
         }

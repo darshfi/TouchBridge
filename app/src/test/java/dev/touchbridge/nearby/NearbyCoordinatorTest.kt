@@ -22,11 +22,12 @@ class NearbyCoordinatorTest {
         var accepts = 0
         var closed = false
         var holdDelivery = false
-        override fun advertise(name: String, listener: NearbyTransport.Listener, ready: () -> Unit, failed: () -> Unit) {
-            this.listener = listener; ready()
+        var startFailed: ((NearbyStartFailure) -> Unit)? = null
+        override fun advertise(name: String, listener: NearbyTransport.Listener, ready: () -> Unit, failed: (NearbyStartFailure) -> Unit) {
+            this.listener = listener; startFailed = failed; ready()
         }
-        override fun discover(listener: NearbyTransport.Listener, ready: () -> Unit, failed: () -> Unit) {
-            this.listener = listener; ready()
+        override fun discover(listener: NearbyTransport.Listener, ready: () -> Unit, failed: (NearbyStartFailure) -> Unit) {
+            this.listener = listener; startFailed = failed; ready()
         }
         override fun request(name: String, endpoint: String, failed: () -> Unit) { requests.add(endpoint) }
         override fun accept(endpoint: String, failed: () -> Unit) { accepts++ }
@@ -297,5 +298,24 @@ class NearbyCoordinatorTest {
         assertEquals(NearbyProtocol.HELLO, advertiser.state.value.received)
         assertEquals(NearbyProtocol.HELLO, reader.state.value.received)
         assertTrue(advertiser.state.value.sent && reader.state.value.sent)
+    }
+
+    @Test fun startupFailureRetainsSpecificSdkCodeAndClosesPort() = runTest {
+        val f = Fixture(this)
+        f.coordinator.start(session, 60000, true); runCurrent()
+        f.port.startFailed!!(NearbyStartFailure(true, 8033, "MISSING_PERMISSION_CHANGE_WIFI_STATE")); runCurrent()
+        assertEquals(NearbyPhase.ERROR, f.coordinator.state.value.phase)
+        assertTrue(f.coordinator.state.value.detail.contains("8033"))
+        assertTrue(f.coordinator.state.value.detail.contains("cannot be granted in Settings"))
+        assertTrue(f.port.closed)
+    }
+
+    @Test fun lateStartupFailureCannotOverwriteANewAttempt() = runTest {
+        val f = Fixture(this)
+        f.coordinator.start(session, 60000, true); runCurrent()
+        val oldFailure = f.port.startFailed!!
+        f.coordinator.start(other, 60000, true); runCurrent()
+        oldFailure(NearbyStartFailure(true, 8007, "STATUS_RADIO_ERROR")); runCurrent()
+        assertEquals(NearbyPhase.ADVERTISING, f.coordinator.state.value.phase)
     }
 }

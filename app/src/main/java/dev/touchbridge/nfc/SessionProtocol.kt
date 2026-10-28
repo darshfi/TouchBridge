@@ -63,29 +63,38 @@ data class EmulationSessionStatus(val generation: Long = 0, val active: Boolean 
 class SessionRegistry(private val now: () -> Long, private val random: SecureRandom = SecureRandom()) {
     private var id: ByteArray? = null
     private var expiry = 0L
+    private var serving = false
     private val _status = MutableStateFlow(EmulationSessionStatus())
     val status = _status.asStateFlow()
     val generation: Long get() = _status.value.generation
 
-    @Synchronized fun start() {
+    @Synchronized fun start(serveImmediately: Boolean = true) {
         id = ByteArray(16).also { random.nextBytes(it) }
         expiry = now() + SessionProtocol.LIFETIME_MS
+        serving = serveImmediately
         _status.value = EmulationSessionStatus(generation + 1, active = true)
     }
     @Synchronized fun stop() {
         id = null
         expiry = 0
+        serving = false
         _status.value = EmulationSessionStatus(generation + 1)
     }
     /** Retained for late observers; a previous tap can never complete a new session. */
     @Synchronized fun markServed(expectedGeneration: Long): Boolean {
-        if (generation != expectedGeneration || remainingMillis() == 0L) return false
+        if (!serving || generation != expectedGeneration || remainingMillis() == 0L) return false
         _status.value = _status.value.copy(served = true)
         return true
     }
     @Synchronized fun remainingMillis(): Long = if (id == null) 0 else (expiry - now()).coerceAtLeast(0)
-    @Synchronized fun currentSession(): PeerSession? = payload()?.let(SessionProtocol::decode)
-    @Synchronized fun payload(): ByteArray? {
+    @Synchronized fun activate(expectedGeneration: Long): Boolean {
+        if (generation != expectedGeneration || remainingMillis() == 0L) return false
+        serving = true
+        return true
+    }
+    @Synchronized fun currentSession(): PeerSession? = metadata()?.let(SessionProtocol::decode)
+    @Synchronized fun payload(): ByteArray? = if (serving) metadata() else null
+    private fun metadata(): ByteArray? {
         val current = id ?: return null
         val remaining = remainingMillis()
         return if (remaining > 0) SessionProtocol.encode(current, remaining) else null

@@ -8,3 +8,4 @@ local.properties
 *.keystore
 *.apk
 .DS_Store
+.codex-attachments/

@@ -52,6 +52,14 @@ Nearby 19.5.1's metadata could not be read by the original Kotlin 2.2.10 compile
 
 ## Remaining work
 
+### v0.2.1 startup investigation
+
+Developer screenshots show Nearby startup failure on one phone followed by NFC `idle or expired` on the other. The startup failure path invalidates the NFC session; the second error is consistent with that cleanup. The screenshots contain no SDK status code, so the actual radio/service/permission failure is **not yet diagnosed**. No additional runtime permissions are being requested on speculation.
+
+On `fix/nearby-startup-diagnostics`, startup failures now retain sanitized SDK status codes/names (never raw exception messages). Diagnostics show installed Play services version and missing runtime permissions. NFC sessions are prepared but cannot serve APDUs until Nearby advertising reports success. Generation/expiry guards prevent late readiness callbacks from enabling cancelled sessions. NFC Lab keeps its immediate, standalone behavior. `main` is unchanged; `stable/nfc-verified` preserves `2cb24ec`.
+
+Windows checks pass with **50 unit tests**, including startup error propagation, stale failure rejection, pre-readiness APDU rejection, and expired/cancelled activation. Final build/CI results accompany the test artifact. Device retest and the precise Nearby startup status remain pending. A passing build does not establish that this resolves the underlying SDK failure on the phones.
+
 Next: verify the real Nearby handoff and hello on Pixel/Samsung in both roles. Then implement SAF-backed file transfers, metadata/payload ordering, progress/cancellation, safe save, sharesheet, additional content types and history. File/content features, persistent trust and manual discovery fallback are not implemented yet.
 
 See [hardware-testing.md](hardware-testing.md) for exact role-swap tests and required evidence, and [../README.md](../README.md) for Windows/Arch installation commands.

@@ -8,6 +8,8 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
+import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.nearby.Nearby
@@ -51,13 +53,13 @@ class AndroidNearbyTransport(context: Context) : NearbyTransport {
         }
     }
 
-    override fun advertise(name: String, listener: NearbyTransport.Listener, ready: () -> Unit, failed: () -> Unit) {
+    override fun advertise(name: String, listener: NearbyTransport.Listener, ready: () -> Unit, failed: (NearbyStartFailure) -> Unit) {
         this.listener = listener
         start({ client.startAdvertising(name, NearbyProtocol.SERVICE_ID, lifecycle,
-            AdvertisingOptions.Builder().setStrategy(Strategy.P2P_POINT_TO_POINT).build()) }, ready, failed)
+            AdvertisingOptions.Builder().setStrategy(Strategy.P2P_POINT_TO_POINT).build()) }, true, ready, failed)
     }
 
-    override fun discover(listener: NearbyTransport.Listener, ready: () -> Unit, failed: () -> Unit) {
+    override fun discover(listener: NearbyTransport.Listener, ready: () -> Unit, failed: (NearbyStartFailure) -> Unit) {
         this.listener = listener
         val discovery = object : EndpointDiscoveryCallback() {
             override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) = onMain {
@@ -66,10 +68,19 @@ class AndroidNearbyTransport(context: Context) : NearbyTransport {
             override fun onEndpointLost(endpointId: String) = onMain { if (!closed) listener.lost(endpointId) }
         }
         start({ client.startDiscovery(NearbyProtocol.SERVICE_ID, discovery,
-            DiscoveryOptions.Builder().setStrategy(Strategy.P2P_POINT_TO_POINT).build()) }, ready, failed)
+            DiscoveryOptions.Builder().setStrategy(Strategy.P2P_POINT_TO_POINT).build()) }, false, ready, failed)
     }
 
-    private fun start(operation: () -> Task<Void>, ready: () -> Unit, failed: () -> Unit) {
+    private fun start(operation: () -> Task<Void>, advertising: Boolean, ready: () -> Unit, failed: (NearbyStartFailure) -> Unit) {
+        fun report(error: Exception?) {
+            val failure = when (error) {
+                is ApiException -> NearbyStartFailure(advertising, error.statusCode, ConnectionsStatusCodes.getStatusCodeString(error.statusCode))
+                is SecurityException -> NearbyStartFailure(advertising, status = "PERMISSION_DENIED")
+                else -> NearbyStartFailure(advertising, status = "SDK_START_FAILED")
+            }
+            Log.w("TouchBridgeNearby", failure.description())
+            failed(failure)
+        }
         // Serialize starts across attempts. A late completion from a cancelled start must be
         // cleaned up before a new start, otherwise it could stop the new attempt's radios.
         StartQueue.enqueue {
@@ -78,11 +89,11 @@ class AndroidNearbyTransport(context: Context) : NearbyTransport {
                 operation().addOnCompleteListener { task ->
                     try {
                         if (closed) runCatching { stopSdk() }
-                        else if (task.isSuccessful) ready() else failed()
+                        else if (task.isSuccessful) ready() else report(task.exception)
                     } finally { StartQueue.finished() }
                 }
-            } catch (_: Exception) {
-                if (!closed) failed()
+            } catch (error: Exception) {
+                if (!closed) report(error)
                 StartQueue.finished()
             }
         }
@@ -128,6 +139,12 @@ class AndroidNearbyTransport(context: Context) : NearbyTransport {
     }
 
     companion object {
+        fun diagnostics(context: Context): String {
+            val version = runCatching { context.packageManager.getPackageInfo("com.google.android.gms", 0).versionName }
+                .getOrNull() ?: "unavailable"
+            val missing = NearbyPermissions.missing(context).joinToString { it.substringAfterLast('.') }.ifEmpty { "none" }
+            return "Play services: $version\nMissing runtime permissions: $missing"
+        }
         fun unavailableReason(context: Context): String? {
             if (NearbyPermissions.missing(context).isNotEmpty()) return "Nearby permissions are required. Grant them, then retry."
             if (GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(context) != ConnectionResult.SUCCESS) {

@@ -1,5 +1,9 @@
 # Nearby milestone — two-phone test
 
+## Startup diagnostic build 0.2.1
+
+Use the artifact from `fix/nearby-startup-diagnostics`, leaving `main` and `stable/nfc-verified` intact. On the advertiser, wait for **Ready to tap** before touching phones. During **Starting Nearby**, the NFC session is deliberately unavailable. If advertising fails, do not keep tapping: capture the full error code/name and expand Show diagnostics to capture Android API, Play services version and missing runtime permissions. This identifies the SDK failure without broadening permissions or guessing from the generic 0.2.0 error. Retest NFC Lab separately as a regression check.
+
 Version: 0.2.0. **Implemented; physical Nearby verification pending.** NFC-only exchanges and the sender-status fix were confirmed by the developer in both roles on 2026-10-28. Automated transports do not replace real Nearby testing.
 
 ## Build and install

@@ -151,7 +151,7 @@ class NearbyCoordinator(
                 if (advertiser) NearbyPhase.ADVERTISING else NearbyPhase.DISCOVERING,
                 if (advertiser) "Advertising. Tap with the other phone in Scan mode." else "Looking for the exact session read over NFC…")
         } }
-        val failed = { event { fail("Nearby could not start. Check permissions, Bluetooth, Wi-Fi and Google Play services, then retry.") } }
+        val failed: (NearbyStartFailure) -> Unit = { failure -> event { fail(failure.description()) } }
         if (advertiser) port.advertise(NearbyProtocol.endpointName(session, true), listener, ready, failed)
         else port.discover(listener, ready, failed)
         timeout = scope.launch {

@@ -21,6 +21,7 @@ import dev.touchbridge.diagnostics.Capabilities
 import dev.touchbridge.nearby.NearbyPhase
 import dev.touchbridge.nearby.NearbyState
 import dev.touchbridge.BuildConfig
+import dev.touchbridge.nearby.AndroidNearbyTransport
 
 @Composable
 fun LabScreen(model: LabViewModel, chooseNearbyRole: (Role) -> Unit) {
@@ -28,11 +29,15 @@ fun LabScreen(model: LabViewModel, chooseNearbyRole: (Role) -> Unit) {
     val nearby by model.nearby.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var capabilities by remember { mutableStateOf(Capabilities.detect(context)) }
+    var nearbyDiagnostics by remember { mutableStateOf(AndroidNearbyTransport.diagnostics(context)) }
     var page by rememberSaveable { mutableStateOf("connect") }
     val about = page == "about"
     val connect = page == "connect"
     var diagnostics by rememberSaveable { mutableStateOf(false) }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { capabilities = Capabilities.detect(context) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        capabilities = Capabilities.detect(context)
+        nearbyDiagnostics = AndroidNearbyTransport.diagnostics(context)
+    }
     val dark = isSystemInDarkTheme()
     MaterialTheme(colorScheme = if (dark) darkColorScheme(primary = Color(0xFF80D5C5))
         else lightColorScheme(primary = Color(0xFF006C60))) {
@@ -108,6 +113,7 @@ fun LabScreen(model: LabViewModel, chooseNearbyRole: (Role) -> Unit) {
                 HorizontalDivider()
                 TextButton(onClick = { diagnostics = !diagnostics }) { Text(if (diagnostics) "Hide diagnostics" else "Show diagnostics") }
                 if (diagnostics) {
+                    Text("TouchBridge ${BuildConfig.VERSION_NAME}\n$nearbyDiagnostics")
                     Text("Android API ${capabilities.api}\nNFC: ${capabilities.nfc} · enabled: ${capabilities.enabled}\nHCE: ${capabilities.hce}\nRole: ${state.role}\nProtocol: 1 · ISO-DEP / NFC-A\nNearby: ${nearby.phase}\nLocal approval: ${nearby.approved}")
                 }
             }

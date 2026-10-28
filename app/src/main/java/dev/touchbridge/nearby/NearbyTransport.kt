@@ -10,8 +10,8 @@ interface NearbyTransport {
         fun disconnected(endpoint: String)
         fun bytes(endpoint: String, bytes: ByteArray)
     }
-    fun advertise(name: String, listener: Listener, ready: () -> Unit, failed: () -> Unit)
-    fun discover(listener: Listener, ready: () -> Unit, failed: () -> Unit)
+    fun advertise(name: String, listener: Listener, ready: () -> Unit, failed: (NearbyStartFailure) -> Unit)
+    fun discover(listener: Listener, ready: () -> Unit, failed: (NearbyStartFailure) -> Unit)
     fun request(name: String, endpoint: String, failed: () -> Unit)
     fun accept(endpoint: String, failed: () -> Unit)
     fun reject(endpoint: String)

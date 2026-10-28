@@ -4,6 +4,31 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SessionProtocolTest {
+    @Test fun preparedWirelessSessionCannotBeReadUntilAdvertisingIsReady() {
+        val sessions = SessionRegistry({ 1000L })
+        sessions.start(serveImmediately = false)
+        val engine = ApduEngine(sessions)
+        assertNotNull(sessions.currentSession())
+        assertNull(sessions.payload())
+        assertFalse(sessions.markServed(sessions.generation))
+        assertThrows(IllegalArgumentException::class.java) { SessionProtocol.requireSuccess(engine.process(SessionProtocol.select)) }
+        assertTrue(sessions.activate(sessions.generation))
+        assertEquals(SessionProtocol.HELLO, NfcHandshake().exchange(ApduTransport(engine::process)).message)
+    }
+    @Test fun lateAdvertisingReadyCannotActivateStoppedOrExpiredSession() {
+        var time = 0L
+        val sessions = SessionRegistry({ time })
+        sessions.start(serveImmediately = false)
+        val previous = sessions.generation
+        sessions.stop()
+        sessions.start(serveImmediately = false)
+        assertFalse(sessions.activate(previous))
+        assertNull(sessions.payload())
+        time = 60000
+        assertFalse(sessions.activate(sessions.generation))
+        assertNull(sessions.currentSession())
+        assertNull(sessions.payload())
+    }
     private var now = 1000L
     private fun registry() = SessionRegistry({ now })
     private val id = ByteArray(16) { (it + 1).toByte() }
