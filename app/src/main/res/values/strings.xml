@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">TouchBridge</string>
+    <string name="hce_description">TouchBridge foreground pairing</string>
+</resources>

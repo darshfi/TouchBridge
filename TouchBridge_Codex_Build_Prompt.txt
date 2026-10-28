@@ -1,0 +1,187 @@
+# TouchBridge — Codex implementation brief
+
+You are Codex, acting as a senior native Android engineer and an effective pair programmer. Build a real, runnable Android application called **TouchBridge**: an NFC-initiated peer-to-peer sharing app for **two Android phones**. I want actual implementation, tests, build instructions, and an installable debug APK if this environment can produce one—not just a concept, outline, design mockup, or pseudo-code.
+
+## 1. My context and project priorities
+
+- This is a **personal fun project**. I want to experiment and learn, but also end up with an app that works reliably on real devices.
+- Test device A: **Google Pixel 9a**, currently running **Android 17**.
+- Test device B: **Samsung Galaxy S21 Ultra**, Android version not yet confirmed. Detect the runtime API level and handle differences gracefully; do not assume it's on Android 17.
+- I have Android and programming experience, including Java, C, React Native, and backend work. Explain noteworthy NFC/Android concepts briefly, but implement the working app rather than turning every step into a tutorial.
+- **Current workflow:** write and build the app **on Windows first** using Codex and Android Studio. I will switch to **Arch Linux with Celestia dotfiles** later for physical-device NFC, Nearby, and file-transfer testing. Do not incorrectly assume development is taking place on Linux right now.
+- Keep the Android project fully **cross-platform** (Windows and Linux). Use the checked-in Gradle Wrapper, standard Android SDK tooling, portable configuration, and documented PowerShell/Windows + Bash/Linux commands. Do not hard-code a developer machine path or assume an operating system in app logic.
+- The main Git remote should preferably be a **private GitHub repository** initially, with the option to make it public later or use GitLab. Use ordinary Git workflows; neither hosting service is required for the Android app to work.
+- Do not request root, privileged permissions, hidden APIs, device-owner privileges, or modifications to the OS.
+- Prefer a polished but simple UI, an understandable architecture, and code that I can extend.
+
+## 2. Product vision
+
+The long-term goal is a customizable **touch-to-share** Android experience: open the app on two phones, choose compatible NFC modes, touch the phones together, pair using the brief NFC encounter, move the phones apart, and transfer content through a faster secure local connection. Eventually support files, photos, text, links, contact cards, Wi-Fi access details (where legitimately possible), and playful extras such as shared sessions or game pairing.
+
+**Important realism:** Android Beam's old phone-to-phone push functionality is deprecated; ordinary apps cannot replace the system Quick Share/NameDrop interaction or guarantee background activation from arbitrary locked/home screens. The viable custom NFC path is **one phone using Host Card Emulation (HCE)** and **the other using reader mode**, communicating over ISO-DEP/APDU. HCE is not universal NDEF peer-to-peer push. Use NFC for a tiny handshake, not for large files. Make limitations visible in the UI and README.
+
+## 3. Technology requirements
+
+- **Native Android, Kotlin, Jetpack Compose, Material 3.** Single Android app installed on both devices.
+- Use current *stable, mutually compatible* Kotlin, Android Gradle Plugin, Compose BOM, AndroidX, and Google Play Services Nearby dependencies. Check installed SDK/toolchain and official docs before selecting versions; never invent version strings.
+- Use `NfcAdapter`, `enableReaderMode()`, `IsoDep` for the reader and `HostApduService` for the emulator. Declare HCE properly in the manifest and `res/xml` with `android.permission.BIND_NFC_SERVICE`, the HCE intent filter, and a **unique non-payment proprietary AID** in category `other`. Never register as a payment service or interfere with the default wallet.
+- Use **Google Nearby Connections** for offline peer discovery, encrypted connections, text/byte messages, and large file payloads. Consider `Strategy.P2P_POINT_TO_POINT` for the first implementation. Clearly report when Google Play Services is unavailable.
+- Use coroutines / `StateFlow`, a small repository or coordinator abstraction, a ViewModel for UI state, and a clear transport boundary so NFC, Nearby, and sharing features can be tested independently.
+- Use the Storage Access Framework (`ACTION_OPEN_DOCUMENT`, `ACTION_CREATE_DOCUMENT`, or equivalent Activity Result contracts) / `content://` URIs for user-controlled files. Do not request all-files access or broad storage permissions unless truly necessary.
+- No backend, server, account system, internet connection, cloud storage, analytics, or advertising. Nearby Connections may depend on installed Google Play Services but transfers must not rely on a WAN connection.
+
+## 4. UX and interaction design
+
+Make the main app visually clean and modern with a minimal, thoughtful Material 3 UI. Suggested top-level actions:
+
+- **Send** — choose a file, image, text, or link, then start pairing.
+- **Receive** — wait for another phone.
+- **NFC Lab** — test HCE/reader exchange and see useful technical feedback.
+- **History** — optional, with no sensitive data stored by default.
+- **Settings / About** — capabilities and troubleshooting information.
+
+Use plain language on screen ("Hold phones together", "Connected", "Accept transfer") with a collapsible diagnostics screen showing role, NFC capability, Android API version, Nearby state, connection step, and sanitized errors. Start with an explicit role selection for reliable testing: **Emulate / Advertise** on one phone; **Scan / Discover** on the other. Later, design a symmetric experience without assuming two readers can exchange APDUs directly. Both devices should eventually be able to switch roles.
+
+Preserve usable UI when NFC is disabled or absent; offer a button opening the appropriate system settings. Add permission rationale screens and a no-NFC discovery fallback if practical after the NFC MVP.
+
+## 5. Milestones: build working software in this order
+
+### Milestone 0 — runnable project (Windows development first)
+
+Create the complete Android project with Gradle wrapper, proper manifest, Compose navigation/UI, capability checks (`FEATURE_NFC`, `FEATURE_NFC_HOST_CARD_EMULATION`), a readable README, and a sensible folder structure. **Compile and run unit tests on Windows before declaring this milestone complete**, if the SDK/build environment is available. Support `gradlew.bat assembleDebug` / `gradlew.bat testDebugUnitTest` on Windows and `./gradlew assembleDebug` / `./gradlew testDebugUnitTest` on Linux. Use the project wrapper, not an assumed globally installed Gradle version. Provide instructions for later physical-device testing with USB debugging / `adb` and how to sideload an APK on Arch. If Android SDK is unavailable, still generate a complete project and report precisely what could not be validated; do not claim the APK or NFC handshake works merely because source files exist.
+
+### Milestone 1 — real phone-to-phone NFC handshake (FIRST NONNEGOTIABLE WORKING DEMO)
+
+Implement both roles in the *same app*:
+
+**HCE phone:**
+- Start a short-lived sharing session only when the user explicitly enters the HCE/advertise screen.
+- Create a cryptographically random, short-lived session identifier (e.g. 128-bit random ID); do not use hardware IDs or personal identifiers.
+- Expose a `HostApduService` with the proper manifest and AID XML.
+- Implement an APDU `SELECT AID` command and a separately defined `GET_SESSION` command. Return correctly encoded response APDUs and ISO-7816 status words, including error paths.
+- Return the protocol version, session ID, and optional coarse capabilities; keep the entire exchange short. Validate APDU framing, bound payload sizes, expire the session, and return safe errors if idle.
+- `processCommandApdu()` must not do blocking work on the main thread. Establish safe communication between the service and session coordinator.
+
+**Reader phone:**
+- Enable reader mode while the scan screen is foregrounded (`NfcAdapter.enableReaderMode`), preferring NFC-A/ISO-DEP, and disable it on pause.
+- On tag discovery, check `IsoDep`, connect, issue `SELECT AID`, verify status word `0x9000`, send `GET_SESSION`, parse and validate version/length/session/expiry, then close the connection.
+- Handle `TagLostException`, unsupported tech, wallet interference, NFC disabled, malformed APDU responses, duplicate tag callbacks, and timeout. Perform transceive off the UI thread.
+- Show **"NFC handshake successful"**, the peer/session info in a privacy-preserving way, and the elapsed time. Make the simplest demo a genuine APDU exchange, not mock NFC.
+- Write unit tests for APDU encoding/decoding, protocol validation, expiry, and state transitions.
+
+**Acceptance:** Pixel and S21 Ultra, with the app installed on both and their screens unlocked, can each take turns as reader vs emulator. Touching the appropriate NFC antenna areas results in a real successful handshake without any network or file-transfer layer. **Until I perform physical phone tests on Arch Linux, mark this milestone as "implemented/build-checked; hardware validation pending," not as verified.**
+
+### Milestone 2 — Nearby connection bootstrapped from NFC
+
+- The HCE device starts Nearby **advertising** for its current session when the user enters advertise mode. The reader device starts **discovery** after a valid NFC handshake. Map the ephemeral NFC session ID to the advertising endpoint (e.g. public ephemeral session ID in endpoint name or another documented discovery field); don't invent an API for directly connecting via NFC to a Nearby endpoint ID.
+- Apply accurate Google Play Services Nearby permissions and runtime requests for API levels on both phones. Include Android 12+ Bluetooth permissions, Android 13+ nearby Wi-Fi permission, and Android 17 local-network permission only where the API/target/transport rules require it. Use current official documentation, not a blanket permission grab.
+- On discovery, connect only to the endpoint correlated with the NFC session. Implement Nearby `ConnectionLifecycleCallback` + `EndpointDiscoveryCallback`, statuses, cancellation, timeouts, reconnection after failed attempts, and proper stop advertising/discovery lifecycle cleanup.
+- Require both devices to **accept the connection**, and show Nearby's **authentication digits/verification code** to prevent a nearby attacker impersonating the device. Never equate "NFC was touched" with unlimited trust. Reject unverified peers and expired sessions.
+- Send one small message ("Hello from the other phone") after an authenticated connection, with an explicit accept action. Display receipt on the other device.
+- Never silently start unapproved data transfers or install apps.
+
+**Acceptance:** With both devices using the app, a tap starts a correctly matched, user-approved Nearby session. After moving phones apart, a small text message arrives. No internet required.
+
+### Milestone 3 — real file transfer
+
+- Integrate Android Sharesheet receiving (`ACTION_SEND` and `ACTION_SEND_MULTIPLE`) and in-app file/document picking.
+- Transfer text/link via `Payload.Type.BYTES`; use Nearby `Payload.Type.FILE` for files, without reading entire large files into RAM.
+- Send file metadata (sanitized filename, MIME type, byte length if known, payload ID association) through an authenticated channel before or alongside binary payload; handle out-of-order arrival correctly.
+- Show file name, transfer size, progress, sending/receiving/success/error, cancel button, and save confirmation.
+- Use `ContentResolver` / descriptors and `MediaStore` or Storage Access Framework for safe writes. Preserve the correct MIME type, handle Android scoped storage and URI grants. Never trust raw remote file paths; prevent path traversal. Avoid overwriting files silently.
+- Handle rejection, disconnect during transfer, partial files, 0-byte and large files, duplicates, and payload status updates.
+
+**Acceptance:** Transfer one image and one PDF, then a larger video, from Pixel to Samsung and vice versa. The resulting files open correctly and are identical where practical (hash comparison for tests).
+
+### Milestone 4 — extra sharing modes
+
+- Clipboard-like text: explicitly paste or share selected text; don't promise unrestricted background clipboard monitoring.
+- Links: transfer an ordinary URL and offer to copy/open with a safe Android intent; don't auto-open potentially unsafe content.
+- Contacts: export/import a selected vCard with proper Contacts/SAF system flow and consent; don't read the entire contact database.
+- Wi-Fi: ordinary third-party apps generally **cannot retrieve stored Wi-Fi passwords** or silently join arbitrary saved networks. Provide a **manual SSID/security/password input** or appropriate OS-supported Wi-Fi share flow. Require explicit sender confirmation; do not persist credentials or include them in logs/analytics. On receiver, present a protected, consent-driven view with a copy action or system-supported QR/network-join approach where available; do not pretend Wi-Fi Easy Connect universally permits phone-to-phone saved password extraction.
+- Optional: multiple file selection, device nicknames, a non-sensitive recent transfer list, discover-without-NFC fallback.
+
+## 6. Security, platform constraints, and error handling
+
+- NFC handshake conveys short-lived, non-personal pairing metadata, never sensitive plaintext credentials or full files. Sessions expire quickly (e.g. 60 seconds) and are invalidated after cancellation or successful pairing.
+- NFC session IDs used for matching are **not authentication secrets** if broadcast in Nearby endpoint metadata. Require Nearby's documented connection authentication and explicit confirmation on both sides.
+- UI state should make it obvious when a connection is merely detected vs authenticated vs accepted; prevent sending until approved.
+- Keep role and transfer state lifecycle-aware, clean up radios and pending work when cancelled, and don't keep indefinite background services.
+- Do not require both devices to remain touching after the NFC handshake.
+- NFC antenna alignment varies by device; provide troubleshooting hints.
+- Do not claim to support tap-to-launch from a locked phone, replacing system Quick Share, or automatic transfer while both apps are closed. Mark such behaviors as experimental or unsupported unless verified with public APIs on both physical devices.
+- Do not include dangerous permissions, hidden APIs, root, full-contact scanning, or undifferentiated personal-data collection.
+- Instrument logcat events with feature-specific tags but redact authentication codes, tokens, passwords, content, and filenames unless the user enables an explicit debug-only diagnostic mode.
+
+## 7. Architecture and repository deliverables
+
+Prefer clearly separated code components with interfaces for testability, for example:
+
+```
+app/
+  src/main/java/.../
+    ui/                 # Compose screens, navigation, state and permission UX
+    nfc/                # reader, HCE service, APDU codec, session protocol
+    nearby/             # Nearby advertising, discovery, authentication, payloads
+    transfer/           # typed shares, file metadata, URI handling, progress
+    data/               # session model, optional settings/history
+    diagnostics/        # capability detection and safe logs
+  src/main/res/xml/     # HCE AID service registration
+  src/test/...          # protocol and state-machine tests
+README.md
+```
+
+Exact package layout is flexible. Keep the app reasonably small, avoid premature complexity, and write clear comments explaining Android-specific gotchas. Include:
+
+1. Source code and proper Gradle wrapper/setup.
+2. Device requirements, Android permissions table, and expected limitations.
+3. **Both Windows and Arch Linux** build/install commands (PowerShell `gradlew.bat`, Bash `./gradlew`, `adb`, Android Studio), including any necessary Windows USB driver and Arch `android-tools`/`android-udev` troubleshooting.
+4. A **two-device test checklist** detailing which screen is shown on each phone and which parts of the devices to touch, including a role-swap test.
+5. Unit tests for protocol logic, plus a manual test matrix for different NFC roles, Android versions, and Samsung/Pixel behavior.
+6. Build results and an honest list of what was or was not validated on actual hardware; clearly distinguish Windows compile/tests, GitHub CI checks, and later Arch physical phone checks.
+7. Sensible `.gitignore`; never check in `local.properties`, passwords, keystores, signing secrets, `.gradle/`, `build/`, user-specific IDE files, or generated APKs unless explicitly requested.
+8. A **GitHub Actions** workflow under `.github/workflows/` that performs Android CI and uploads the debug APK as a downloadable **workflow artifact** after a successful build. This is for private testing, **not Play Store publishing**.
+
+## 8. Cross-platform development, Git, GitHub Actions, and CI/CD
+
+### Current Windows → Arch workflow
+
+- **Phase A: Windows + Codex.** Create/edit Kotlin and Compose source, scaffold the Android project, implement APDU reader/HCE logic, set up Nearby Connections, run Gradle compilation, unit tests, and any available static checks. Do not wait for the Linux switch to write code. Do not simulate hardware success.
+- **Phase B: Arch Linux + two real phones.** Pull the repository, build/install the exact version under test, use `adb logcat` and on-device UI to test the Pixel 9a and Samsung S21 Ultra in both NFC roles, then verify Nearby handoff, transfer integrity, and error handling. Device testing can expose OEM/Android behavior that compilation and CI cannot verify.
+- **Phase C: Iterate cross-platform.** Fix issues where convenient, commit changes and push to the remote. Windows and Arch should both be able to check out the repository and build it independently. Do not rely on copying OS-generated build caches across installations.
+- Ensure the Gradle Wrapper scripts (`gradlew`, `gradlew.bat`) and wrapper JAR/properties are checked in. Do not commit machine-generated `local.properties`; resolve `sdk.dir` through each machine's local SDK installation / environment.
+- Provide commands for Windows **PowerShell** and Arch **Bash** with correct syntax, without pretending they are interchangeable. On Windows the wrapper is normally `./gradlew.bat` in PowerShell; on Arch it is `./gradlew` (make the Unix wrapper executable).
+
+### Git and repository practice
+
+- Initialize Git locally if needed and include a minimal, Android-aware `.gitignore`. Suggest descriptive commits after checkpoints (scaffold, NFC handshake, Nearby integration, file transfers, CI). Do **not** delete existing repository history or overwrite an existing remote.
+- Recommend a private GitHub repository first. Explain how I can create it and connect `origin` if one does not exist. GitLab is a valid alternate remote; core Git commands work identically on both.
+- Typical workflow: code on Windows → `git add` / `git commit` / `git push`; switch to Arch → `git pull` and test; commit/fix on Arch → `git push`; resume on Windows → `git pull`. Explain how to avoid overwriting uncommitted changes when switching systems.
+- Avoid unnecessary Git actions without my consent: never create/publish a public repository or push code to a remote I did not approve. You can prepare local commits if appropriate to the active Codex permissions/workflow.
+
+### CI (Continuous Integration) — implement this, but keep it lightweight
+
+- Add a valid GitHub Actions workflow, for example `.github/workflows/android-ci.yml`, using a hosted **Ubuntu runner**. Windows development does not require a Windows CI runner; Android builds can be tested on Linux independently of where the code was authored.
+- Trigger CI on `push`, `pull_request`, and optionally `workflow_dispatch`; avoid heavyweight workflows and unnecessary matrix builds for now.
+- Workflow should: check out code; set up the JDK version **compatible with the project's selected Android Gradle Plugin**; set up Android SDK/build tools as needed; use the **Gradle Wrapper**; run `testDebugUnitTest` and `assembleDebug` (optionally lint when it is configured and reliable); fail clearly if a step fails; and upload `app/build/outputs/apk/debug/*.apk` using `actions/upload-artifact` as a **downloadable, short-lived debug build artifact** after successful checks.
+- Verify action versions and Android toolchain requirements when generating the workflow. Do not hard-code Java 17 if this project's actual AGP requires another version. Debug APKs are for personal testing; no production signing keys, credentials, or Play Store API tokens in CI.
+- If CI cannot actually be executed yet (e.g. no remote repository, network, or credentials in Codex), include the workflow file and explicitly report **"CI configured, not yet verified on GitHub"** instead of claiming it passed.
+- A passing CI job means the source compiled and automated checks ran, **not** that NFC hardware handshake or Nearby transfers work on either device.
+
+### CD (Continuous Delivery) — only the simple part for now
+
+- Treat uploading a downloadable debug APK artifact as the **first delivery step** for personal testing. I should be able to obtain the APK from a successful workflow run without generating it manually each time.
+- Do **not** set up **Continuous Deployment** to the Play Store, auto-release to the public, or automatic installation on my devices. No release signing automation is needed now.
+- Consider tagged releases or more advanced delivery pipelines **later**, after both phones have passed physical end-to-end testing.
+
+## 9. How you should work as Codex
+
+1. Inspect the current repository first. If it's empty, bootstrap the project. If something already exists, respect and reuse it. Check for `AGENTS.md` and follow repo instructions.
+2. Look up or verify current official Android and Nearby API docs as necessary. Avoid obsolete Beam APIs, fictional APIs, or guessed Gradle/dependency versions.
+3. **Start implementing immediately on Windows.** Do not stop after producing a plan. Complete Milestones 0 and 1 first, running the Windows Gradle build and unit tests when tooling is available; mark real NFC tests as pending until we switch to Arch and use the actual phones.
+4. Add the GitHub Actions CI workflow and lightweight debug APK artifact delivery early, preferably after the initial build works. Advance to Milestones 2 and 3 if practical in this session, with clean, small commits or logical changes. Do not conceal limitations or mark untested phone-to-phone NFC flows as working.
+5. When a physical-device test is required, tell me the exact actions for each phone and the specific output/logcat evidence you need, then proceed with other independent implementation tasks rather than pretending the test ran.
+6. Prefer the simplest reliable implementation to a speculative "perfect AirDrop" imitation. Keep room for later enhancements.
+7. At the end, report what code was created, **Windows build/test results, GitHub CI configuration/execution status**, what's waiting for my Pixel/Samsung tests on Arch, and the exact next commands or actions I should take.
+
+**Start now on Windows: inspect the repo, scaffold the Kotlin/Compose app, implement the HCE/reader APDU handshake, run the available build/tests, and add GitHub Actions CI with downloadable debug APK artifacts. Later, guide the Pixel/Samsung hardware tests on Arch; never mark them passed without evidence.**
