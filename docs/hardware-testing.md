@@ -2,7 +2,7 @@
 
 Status, 2026-10-28: **the developer reports successful NFC exchanges with each phone acting as reader and emulator.** Attached screenshots show a successful greeting in 67 ms and emulator-side response feedback (API 37). The developer explicitly confirmed the reverse direction also worked; its screenshot was not supplied. Samsung's API level and ADB/logcat results are still unrecorded. The OS used for the test was not specified. Unit tests remain distinct from this user-reported hardware evidence.
 
-The developer also reported intermittent emulator status/countdown confusion despite successful receipt. Version 0.1.1 retains response-served state per session, hides the countdown after serving GET_SESSION, and preserves the result after TTL expiry. **Device retest of this fix is pending.**
+The developer also reported intermittent emulator status/countdown confusion despite successful receipt. Version 0.1.1 retains response-served state per session, hides the countdown after serving GET_SESSION, and preserves the result after TTL expiry. **The developer subsequently confirmed the fix works on the phones.** Version 0.2.0 adds Nearby; its independent hardware tests remain pending in [nearby-testing.md](nearby-testing.md).
 
 ## Record evidence
 
@@ -36,7 +36,7 @@ Success evidence: reader UI shows `NFC handshake successful` plus `Hello from To
 | --- | --- | --- | --- |
 | Pixel reads Samsung | Samsung Emulate, Pixel Scan, align backs within 60s | Reader greeting + elapsed time, HCE response feedback | Developer confirmed pass on 2026-10-28; emulator status issue reported |
 | Samsung reads Pixel | Pixel Emulate, Samsung Scan | Same real result | Developer confirmed pass on 2026-10-28; emulator status issue reported |
-| Emulator completion display (0.1.1) | Complete tap in each direction, separate phones, wait >60s | Emulator shows NFC session sent, hides countdown, retains result; unserved sessions still expire | Pending |
+| Emulator completion display (0.1.1) | Complete tap in each direction, separate phones, wait >60s | Emulator shows NFC session sent, hides countdown, retains result; unserved sessions still expire | Developer confirmed fix works; exact timing/log evidence not supplied |
 | Both scan | Scan on both | No fabricated success; choose complementary roles | Pending |
 | Idle emulator | Stop emulator, keep reader scanning | No valid session / no handshake; no background session creation | Pending |
 | Expiry | Wait >60s on emulator | Session expired; reader cannot get a valid session | Pending |
@@ -53,6 +53,6 @@ Success evidence: reader UI shows `NFC handshake successful` plus `Hello from To
 
 If there is no callback, check NFC enabled, unlocked screens, foreground roles, countdown, cases, and antenna alignment. Some device NFC controllers need the phones held in a different relative position. Secure NFC / wallet routing must be checked on the actual devices. Do not interpret a system NFC sound as a successful application handshake.
 
-## Later milestones (not implemented/testable in this APK)
+## Nearby and later sharing milestones
 
-Nearby acceptance will require matched public session metadata, unexpired receipt-time TTL, Play Services availability, API-appropriate runtime permissions, matching authentication codes and approval on both screens, rejection, timeout, disabled radios, disconnection, and offline hello receipt after moving apart. File acceptance will require image/PDF/large video transfers in both directions, SHA-256 equality, cancellation, 0-byte files, reconnect, safe save destinations, out-of-order metadata, scoped URI access and share-sheet inputs. Add real evidence when those layers are implemented.
+Version 0.2.0 implements the Nearby handoff and hello; follow its [dedicated acceptance checklist](nearby-testing.md). File transfer is not implemented. Its later acceptance will require image/PDF/large video transfers in both directions, SHA-256 equality, cancellation, 0-byte files, reconnect, safe save destinations, out-of-order metadata, scoped URI access and share-sheet inputs. Add real evidence when those layers are implemented.

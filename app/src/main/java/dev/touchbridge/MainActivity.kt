@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
@@ -16,22 +17,44 @@ import dev.touchbridge.nfc.TouchBridgeHceService
 import dev.touchbridge.ui.LabScreen
 import dev.touchbridge.ui.LabViewModel
 import dev.touchbridge.ui.Role
+import dev.touchbridge.nearby.NearbyPermissions
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val model: LabViewModel by viewModels()
     private val adapter get() = getSystemService(NfcManager::class.java)?.defaultAdapter
     private var appliedRole: Role? = null
+    private var pendingNearbyRole: Role? = null
+    private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        if (NearbyPermissions.missing(this).isEmpty()) startPendingNearbyRole()
+        else { pendingNearbyRole = null; model.permissionsDenied() }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { LabScreen(model) }
+        setContent { LabScreen(model, ::chooseNearbyRole) }
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                startPendingNearbyRole()
                 model.state.collect { if (it.role != appliedRole) applyRole(it.role) }
             }
         }
+    }
+
+    private fun chooseNearbyRole(role: Role) {
+        model.stop()
+        pendingNearbyRole = role
+        val missing = NearbyPermissions.missing(this)
+        if (missing.isEmpty()) startPendingNearbyRole()
+        else permissions.launch(missing.toTypedArray())
+    }
+
+    private fun startPendingNearbyRole() {
+        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) || NearbyPermissions.missing(this).isNotEmpty()) return
+        val role = pendingNearbyRole ?: return
+        pendingNearbyRole = null
+        model.choose(role, useNearby = true)
     }
 
     private fun applyRole(role: Role) {

@@ -1,13 +1,17 @@
 package dev.touchbridge.ui
 
 import android.nfc.Tag
+import android.app.Application
 import android.nfc.TagLostException
 import android.os.SystemClock
 import android.util.Log
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.touchbridge.nfc.NfcReader
 import dev.touchbridge.nfc.NfcSessionRepository
+import dev.touchbridge.nearby.AndroidNearbyTransport
+import dev.touchbridge.nearby.NearbyCoordinator
+import dev.touchbridge.nearby.NearbyPhase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -18,7 +22,7 @@ import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 
-class LabViewModel : ViewModel() {
+class LabViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(LabState())
     val state = _state.asStateFlow()
     private val reader = NfcReader()
@@ -26,10 +30,29 @@ class LabViewModel : ViewModel() {
     private var epoch = 0L
     private var lastTap = 0L
     private var emulationGeneration: Long? = null
+    private var wireless = false
+    private var lastNearbyPhase: NearbyPhase? = null
+    val nearby = NearbyCoordinator(viewModelScope, SystemClock::elapsedRealtime,
+        { AndroidNearbyTransport(application) }, { NfcSessionRepository.sessions.status.value.served })
 
     init {
         viewModelScope.launch {
             NfcSessionRepository.sessions.status.collect { updateEmulationStatus() }
+        }
+        viewModelScope.launch {
+            nearby.state.collect { connection ->
+                if (connection.phase != lastNearbyPhase) {
+                    lastNearbyPhase = connection.phase
+                    Log.i("TouchBridgeNearby", "State: ${connection.phase}")
+                }
+                if (wireless && _state.value.role != Role.IDLE && connection.phase in setOf(NearbyPhase.CONNECTED, NearbyPhase.ERROR)) {
+                    // Preserve the Nearby result while releasing NFC routing and invalidating its token.
+                    emulationGeneration = null
+                    NfcSessionRepository.sessions.stop()
+                    reader.close()
+                    _state.value = _state.value.copy(role = Role.IDLE)
+                }
+            }
         }
         viewModelScope.launch {
             while (true) {
@@ -46,8 +69,14 @@ class LabViewModel : ViewModel() {
         else _state.value = updated
     }
 
-    fun choose(role: Role) {
+    fun choose(role: Role, useNearby: Boolean = false) {
         stop()
+        if (useNearby) {
+            val error = runCatching { AndroidNearbyTransport.unavailableReason(getApplication()) }
+                .getOrElse { "Nearby access is unavailable. Check permissions and system settings, then retry." }
+            if (error != null) { nearby.unavailable(error); return }
+        }
+        wireless = useNearby
         if (role == Role.EMULATE) {
             NfcSessionRepository.sessions.start()
             emulationGeneration = NfcSessionRepository.sessions.generation
@@ -58,15 +87,23 @@ class LabViewModel : ViewModel() {
             Role.SCAN -> LabState(role, "Hold phones together", "On the other phone, choose Emulate. Align the NFC antennas on the backs of the phones.")
             Role.IDLE -> LabState()
         }
+        if (useNearby && role == Role.EMULATE) {
+            val session = NfcSessionRepository.sessions.currentSession() ?: return
+            nearby.start(session.id, session.remainingMillis, advertise = true)
+        }
     }
 
     fun stop(title: String = "Ready to connect", detail: String = "Choose a role on each phone to test a real NFC exchange.") {
         epoch++
+        wireless = false
+        nearby.stop()
         emulationGeneration = null
         NfcSessionRepository.sessions.stop()
         reader.close()
         _state.value = LabState(title = title, detail = detail)
     }
+
+    fun permissionsDenied() = nearby.unavailable("Nearby permissions were not granted. You can retry or enable them in App settings. NFC Lab still works without them.")
 
     fun roleFailure(role: Role) {
         if (role == Role.EMULATE) stop("Could not start card emulation", "Check NFC and foreground service routing in system settings, then choose Emulate again.")
@@ -77,6 +114,7 @@ class LabViewModel : ViewModel() {
     fun onTag(tag: Tag) {
         viewModelScope.launch {
             val now = SystemClock.elapsedRealtime()
+            if (wireless && nearby.state.value.phase != NearbyPhase.IDLE) return@launch
             if (_state.value.role != Role.SCAN || now - lastTap < 1200 || !reading.compareAndSet(false, true)) return@launch
             lastTap = now
             val attempt = epoch
@@ -89,6 +127,11 @@ class LabViewModel : ViewModel() {
                         title = "NFC handshake successful",
                         detail = "${peer.message}\nProtocol 1 · session …${peer.id.takeLast(4)} · ${SystemClock.elapsedRealtime() - started} ms\nValid for up to ${peer.remainingMillis / 1000}s at receipt. Peer identity is not verified.")
                     Log.i("TouchBridgeReader", "NFC handshake successful")
+                    if (wireless) {
+                        // Conservative receipt deadline: never extend the emulator's remaining TTL.
+                        val remaining = peer.remainingMillis - (SystemClock.elapsedRealtime() - started)
+                        nearby.start(peer.id, remaining, advertise = false)
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled

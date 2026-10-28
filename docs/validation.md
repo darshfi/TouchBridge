@@ -1,6 +1,6 @@
 # Validation record
 
-Checkpoint: project foundation + NFC reader/HCE/session protocol.
+Current checkpoint: v0.2.0 NFC-to-Nearby handoff. Earlier version measurements below are retained as historical build records.
 
 ## Implemented
 
@@ -8,6 +8,7 @@ Checkpoint: project foundation + NFC reader/HCE/session protocol.
 * Foreground reader using actual NFC-A ISO-DEP SELECT + GET_SESSION, 3-second per-command timeout, overlapping callback suppression, cancellation, safe errors and connection cleanup.
 * Protected category-other HostApduService; bounded APDU parsing; random in-memory 60-second sessions; monotonic expiry; invalidation on lifecycle pause; protocol generation checks and interrupted-link recovery.
 * JVM protocol/state tests and GitHub Actions build/test/lint + debug APK artifact delivery.
+* Nearby advertising/discovery correlated with the NFC session, mandatory matching-code approval on both phones, encrypted session validation, bounded pairing/message timeouts, lifecycle cleanup, runtime permission handling, and an explicitly sent fixed hello in either direction.
 
 ## Execution status
 
@@ -37,10 +38,20 @@ The developer reported successful receiving with intermittent emulator-side comp
 
 The registry now retains response-served status for its generation. Both the observer and periodic UI refresh read that state. Old/cancelled sessions cannot complete a new session; a served result hides the countdown and remains visible after the protocol deadline. Token expiry is still enforced, and Stop/background/rotation still clear the role. UI wording now says NFC session sent because serving a response alone is not an acknowledgement from the reader. The two-APDU wire protocol is unchanged.
 
-Seven regression tests cover late UI observation, post-success TTL expiry, unserved expiry, old-session results, cancellation/role switches, invalid commands and repeated taps. Windows `testDebugUnitTest assembleDebug lintDebug` passed in 2m 25s: **21 tests, zero failures/errors/skips**, successful APK packaging, and lint with zero errors/one Gradle update advisory. APK signature verification also passed. **Retesting the status fix on both physical devices is pending.** The original version 0.1.0 build measurements above are historical.
+Seven regression tests cover late UI observation, post-success TTL expiry, unserved expiry, old-session results, cancellation/role switches, invalid commands and repeated taps. Windows `testDebugUnitTest assembleDebug lintDebug` passed in 2m 25s: **21 tests, zero failures/errors/skips**, successful APK packaging, and lint with zero errors/one Gradle update advisory. APK signature verification also passed. **The developer subsequently confirmed the sender-status fix works on the phones.** The original version 0.1.0 build measurements above are historical.
+
+## Version 0.2.0 — NFC-to-Nearby
+
+Adds a Connect screen, foreground P2P_POINT_TO_POINT advertising/discovery, exact ephemeral endpoint-name matching, four-digit comparison with explicit acceptance on each phone, MATCH verification over the approved encrypted connection, and a Send hello action backed by actual BYTES payload completion callbacks. No user-visible hello is sent automatically. NFC Lab remains independent of wireless permissions. Successful matching releases NFC routing and invalidates the NFC registry while retaining the approved foreground connection.
+
+Pure Kotlin tests exercise both coordinators communicating through a fake transport, both-sided approval, wrong endpoint/session rejection, absent NFC proof, invalid codes/messages, timeouts, out-of-order frames, disconnects, cancellation, late callbacks, duplicate callbacks and API-specific permission sets. These are simulated software checks, not radio tests. Current Windows checks: **44 tests, zero failures/errors/skips**, debug build and lint passed. Final incremental verification passed in 23s. APK Signature Scheme v2 verification passed; packaged version is 0.2.0 (3). Lint has zero errors and two update advisories (Gradle and the intentionally aligned coroutines-test version). Bluetooth, location, Wi-Fi and NFC features are optional in the packaged manifest; runtime checks determine availability. GitHub execution status is available from the published commit's Actions run.
+
+Nearby 19.5.1's metadata could not be read by the original Kotlin 2.2.10 compiler. Kotlin/Compose 2.4.21 compiled but triggered an internal Android lint analysis crash; Kotlin/Compose **2.3.21** reads the library successfully and runs lint without disabling its experimental-API checks. A dependency constraint raises Play services' transitive Fragment 1.1.0 to stable 1.9.1 for Activity Result permission compatibility. Runtime coroutines stay aligned with Nearby's 1.10.2 BOM; the test library matches it. Toolchain pins were checked against official documentation/Maven metadata, and builds use the wrapper with no local SDK/JDK paths committed.
+
+**Nearby physical validation is pending.** The developer's passed NFC/status tests do not establish Nearby discovery, authentication, offline delivery, or OEM permission behavior. Follow [nearby-testing.md](nearby-testing.md) on both devices, record the Samsung API level, and test roles in both directions.
 
 ## Remaining work
 
-Next: Nearby advertising correlated with the NFC public session identifier, discovery, Play Services checks, correctly scoped runtime permissions, two-sided authentication confirmation, expiry enforcement, cancellation/timeouts, and an explicitly sent hello. Then SAF-backed file transfers, metadata/payload ordering, progress/cancellation, safe save, sharesheet, additional content types and history. These features are not implemented by this checkpoint.
+Next: verify the real Nearby handoff and hello on Pixel/Samsung in both roles. Then implement SAF-backed file transfers, metadata/payload ordering, progress/cancellation, safe save, sharesheet, additional content types and history. File/content features, persistent trust and manual discovery fallback are not implemented yet.
 
 See [hardware-testing.md](hardware-testing.md) for exact role-swap tests and required evidence, and [../README.md](../README.md) for Windows/Arch installation commands.

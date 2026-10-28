@@ -84,6 +84,7 @@ class SessionRegistry(private val now: () -> Long, private val random: SecureRan
         return true
     }
     @Synchronized fun remainingMillis(): Long = if (id == null) 0 else (expiry - now()).coerceAtLeast(0)
+    @Synchronized fun currentSession(): PeerSession? = payload()?.let(SessionProtocol::decode)
     @Synchronized fun payload(): ByteArray? {
         val current = id ?: return null
         val remaining = remainingMillis()

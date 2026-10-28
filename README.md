@@ -4,9 +4,22 @@ A native Kotlin / Compose NFC experiment for Pixel 9a and Galaxy S21 Ultra. Inst
 
 ## Current checkpoint
 
-Milestones 0–1: project foundation and real NFC reader/HCE implementation, including the versioned short-lived session protocol. **The developer confirmed successful physical exchanges in both directions on Pixel 9a and Galaxy S21 Ultra on 2026-10-28.** Version 0.1.1 fixes the emulator's completion/countdown display; this change needs device retesting. See [validation.md](docs/validation.md) for build results and evidence. Nearby, file transfer, share-sheet integration, contacts, Wi-Fi, and history are subsequent work.
+Version **0.2.0** adds NFC-bootstrapped Nearby Connections, matching-code approval on both phones, encrypted session matching, and an explicitly sent hello in either direction. **Nearby hardware validation is pending.** The developer confirmed physical NFC exchanges in both roles and the v0.1.1 sender-status fix on Pixel 9a and Galaxy S21 Ultra. See [validation.md](docs/validation.md) for evidence. File transfer, share-sheet receiving, contacts, Wi-Fi credentials, manual discovery and history remain subsequent work.
 
 The app shows a real reader result only after SELECT and GET_SESSION both succeed. Unit tests use a simulated transport and do not establish that either phone's NFC hardware works.
+
+## Connect with Nearby
+
+Install the same APK on both phones, unlock them, and enable NFC, Bluetooth and Wi-Fi. Keep TouchBridge foregrounded. No internet connection or shared router is required. Google Play services must be available; old Android versions also need system Location enabled for discovery.
+
+1. On **Connect**, choose **Advertise + emulate** on one phone. Approve the runtime permissions; the app starts a fresh 60-second session after permission approval.
+2. Choose **Scan + connect** on the other phone and grant its permissions. Touch the phones' NFC antennas together. The existing two-APDU exchange stays unchanged.
+3. Both phones show a four-digit code. **Compare the codes on the actual phones and tap Codes match · accept on each.** Reject mismatches; an NFC tap alone is not authentication.
+4. Wait for **Connected to the tapped phone** on both. The phones have now matched the NFC session over the approved encrypted link. Move them apart.
+5. Tap **Send hello** on either phone. The other shows **Received: Hello from the other phone**. Test the reverse direction in the same connection.
+6. **Stop session**, leaving the app, locking or rotating disconnects and clears pairing metadata. Starting again requires a new tap and new approvals. Switch to **NFC Lab** to test NFC independently without wireless permissions.
+
+See [nearby-testing.md](docs/nearby-testing.md) for rejection, timeout, permission, cancellation and offline tests. This milestone implements a small fixed BYTES hello, not files or arbitrary clipboard content.
 
 ## Build on Windows
 
@@ -63,15 +76,17 @@ The app requests foreground routing with `setPreferredService` for its category-
 * SELECT: `00 A4 04 00 0D F0 54 4F 55 43 48 42 52 49 44 47 45 01 00`; see [protocol.md](docs/protocol.md) for exact framing.
 * GET_SESSION: `80 10 00 00 00`.
 * Response: protocol version (1 byte), random session identifier (16 bytes), remaining lifetime (4-byte big-endian milliseconds), fixed UTF-8 greeting, then `90 00`.
-* Session IDs are generated using SecureRandom, last at most 60 seconds, stay in memory, and are invalidated on Stop, backgrounding, rotation, or process death. A reader receives a relative TTL to avoid depending on synchronized device clocks. It is diagnostic metadata in this build; a future wireless coordinator must enforce its local receipt-time deadline too.
+* Session IDs are generated using SecureRandom, last at most 60 seconds, stay in memory, and are invalidated on Stop, backgrounding, rotation, process death or successful Nearby matching. The reader subtracts elapsed NFC exchange time from the received TTL and enforces a conservative monotonic deadline for discovery/approval/matching. After pairing, the approved foreground Nearby connection can continue past the NFC deadline.
 * HCE only serves explicitly opened foreground sessions. Its callback does bounded in-memory work. Reader transceive runs on Dispatchers.IO, closes ISO-DEP in finally, uses a 3-second per-command timeout, and suppresses overlapping/repeated callbacks.
-* NFC is proximity metadata, **not authentication**. IDs intended for future Nearby matching are public. Nearby must display its authentication code and require approval on both phones before any transfer. No secrets, filenames, payload contents, IDs, or authentication codes are logged.
+* NFC is proximity metadata, **not authentication**. Nearby endpoint names contain the public ID and role. Nearby's authentication digits and approval on both phones protect against impersonation; a bounded MATCH control frame then verifies both endpoints agree on the NFC session. Only explicit Send hello transmits the user-visible message. Logs contain sanitized phase names, never IDs, codes, secrets or message contents.
 
 Leaving the app or rotating deliberately stops the current role. Restart explicitly after resuming. No locked-screen sharing, tap-to-launch guarantee, background radio services, broad storage access, analytics, or automatic Wi-Fi password access.
 
 ## Architecture
 
 `nfc/SessionProtocol.kt` contains the JVM-testable codec, APDU state machine, session registry, and transport interface. `NfcReader` owns ISO-DEP; `TouchBridgeHceService` exposes the APDU service. `NfcSessionRepository` bridges the service and ViewModel in the same process. `ui/LabViewModel` owns user-visible state and cancellation; `MainActivity` owns foreground reader mode and routing. `diagnostics/Capabilities` checks actual NFC, HCE and API support. Compose provides a scrollable Material 3 lab, About screen, diagnostics, light/dark themes, and accessible text buttons. No hardware-dependent code is substituted with fake success.
+
+`nearby/NearbyCoordinator` is a pure Kotlin state machine with a transport interface, generation guards, monotonic deadlines and bounded control frames. `AndroidNearbyTransport` adapts real Google Nearby callbacks, serializes radio starts across cancelled attempts, tracks actual payload completion, and releases all endpoints on cleanup. The Activity gates wireless starts behind runtime permissions and the ViewModel uses only application context. Auth digits are ephemeral UI state and are cleared when verification completes, expires or is cancelled.
 
 ## Permissions
 
@@ -81,13 +96,19 @@ Leaving the app or rotating deliberately stops the current role. Restart explici
 | `BIND_NFC_SERVICE` | Protects exported HCE service | Only the system can bind; not requested as an app permission |
 | `dev.touchbridge.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` | Generated by AndroidX, signature protected | Protects internal receiver delivery; no runtime prompt |
 | NFC / HCE features | Optional | Unsupported devices can open diagnostics/About |
-| Bluetooth, location, nearby Wi-Fi, local network, storage, contacts | Not requested | Wireless and content sharing are not implemented at this checkpoint |
+| `INTERNET`, Wi-Fi/network state | Normal permissions | Nearby's supported local Wi-Fi transports and radio status; no app backend |
+| Legacy Bluetooth / Wi-Fi change | Scoped to old APIs | Nearby on older Android releases |
+| Coarse / fine location | Runtime on API 26–32 only (fine from 29) | Legacy Bluetooth/Wi-Fi discovery; Android 12 requests coarse and fine together |
+| Bluetooth scan/connect/advertise | Runtime on API 31+ | Nearby radios; scanning asserts neverForLocation |
+| `NEARBY_WIFI_DEVICES` | Runtime on API 33+ | Nearby Wi-Fi; neverForLocation |
+| `ACCESS_LOCAL_NETWORK` | Runtime on API 37+ / target 37 | Nearby's default Wi-Fi LAN transport under Android 17 enforcement |
+| Storage, contacts, background location | Not requested | Files/contacts/background sharing are not part of this milestone |
 
 ## Git, CI and delivery
 
 The private repository is [darshfi/TouchBridge](https://github.com/darshfi/TouchBridge). The Gradle wrapper and its distribution SHA-256 are checked in. CI (`.github/workflows/android-ci.yml`) uses an Ubuntu runner, JDK 21, Android SDK, wrapper validation/caching via setup-gradle, unit tests, lint and a debug build. After success, **touchbridge-debug** is available under the workflow run's Artifacts for seven days. Reports are uploaded even on failure. Check [Actions](https://github.com/darshfi/TouchBridge/actions/workflows/android-ci.yml) for the actual result for each commit. No Play deployment or production signing exists.
 
-To install on your phone, sign into GitHub as the repository owner, open the latest successful Android CI run, and download **touchbridge-debug** from **Artifacts**. Extract the ZIP using your file manager, then open `app-debug.apk`. If prompted, permit APK installation for that browser/file manager. Install the same APK on both phones. GitHub's **Download ZIP** under the Code button contains source code and cannot be installed as an Android app. CI generates a fresh debug signing key on each runner: uninstall the previous experimental build before installing a newer CI APK when the signatures differ. Uninstalling removes app data. These are debug NFC Lab builds; wireless sharing is not implemented yet.
+To install on your phone, sign into GitHub as the repository owner, open the latest successful Android CI run, and download **touchbridge-debug** from **Artifacts**. Extract the ZIP using your file manager, then open `app-debug.apk`. If prompted, permit APK installation for that browser/file manager. Install the same APK on both phones. GitHub's **Download ZIP** under the Code button contains source code and cannot be installed as an Android app. CI generates a fresh debug signing key on each runner: uninstall the previous experimental build before installing a newer CI APK when the signatures differ. Uninstalling removes app data. Check **About** for the installed version.
 
 On another development computer, clone the private repository while signed in:
 
@@ -100,4 +121,4 @@ Use `git status` before switching computers. Commit or stash changes before `git
 
 ## Verified reference sources
 
-Toolchain selection was checked against official [AGP 9.4 compatibility](https://developer.android.com/build/releases/agp-9-4-0-release-notes), [Compose BOM](https://developer.android.com/develop/ui/compose/bom), [Activity releases](https://developer.android.com/jetpack/androidx/releases/activity), [Lifecycle releases](https://developer.android.com/jetpack/androidx/releases/lifecycle), Google Maven metadata, and [Android HCE documentation](https://developer.android.com/develop/connectivity/nfc/hce). AGP 9.4.1 uses built-in Kotlin 2.2.10; the Compose compiler plugin matches it. Gradle 9.6.0 requires a compatible runtime JDK (CI uses 21; initial Windows build uses installed 23). Minimum Android API is 26, compile/target is 37.
+Toolchain selection was checked against official [AGP 9.4 compatibility](https://developer.android.com/build/releases/agp-9-4-0-release-notes), [Compose BOM](https://developer.android.com/develop/ui/compose/bom), [Activity releases](https://developer.android.com/jetpack/androidx/releases/activity), [Lifecycle releases](https://developer.android.com/jetpack/androidx/releases/lifecycle), Google Maven metadata, and [Android HCE documentation](https://developer.android.com/develop/connectivity/nfc/hce). The Kotlin compiler and Compose compiler are overridden together to 2.3.21 using AGP's [documented KGP override](https://developer.android.com/build/releases/agp-9-0-0-release-notes#runtime-dependency-on-the-kotlin-gradle-plugin), because Nearby 19.5.1's metadata is newer than AGP's bundled compiler can read. Gradle remains 9.6.0; CI uses JDK 21 and Windows uses installed JDK 23. Minimum API is 26, compile/target is 37. Nearby behavior follows Google's [connection management](https://developers.google.com/nearby/connections/android/manage-connections), [permissions](https://developers.google.com/nearby/connections/android/get-started), and Android's [local-network rules](https://developer.android.com/privacy-and-security/local-network-permission).
