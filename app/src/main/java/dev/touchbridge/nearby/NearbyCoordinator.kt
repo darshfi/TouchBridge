@@ -6,6 +6,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import dev.touchbridge.transfer.FileProtocol
+import dev.touchbridge.transfer.FileTransferCoordinator
+import dev.touchbridge.transfer.FileUpdate
 
 enum class NearbyPhase { IDLE, STARTING, ADVERTISING, DISCOVERING, REQUESTING, VERIFYING, MATCHING, CONNECTED, ERROR }
 data class NearbyState(
@@ -27,6 +30,7 @@ class NearbyCoordinator(
 ) {
     private val _state = MutableStateFlow(NearbyState())
     val state = _state.asStateFlow()
+    var files: FileTransferCoordinator? = null
     private var transport: NearbyTransport? = null
     private var attempt = 0L
     private var deadline = 0L
@@ -43,6 +47,7 @@ class NearbyCoordinator(
     fun unavailable(message: String) { cleanup(); _state.value = NearbyState(NearbyPhase.ERROR, message) }
 
     private fun cleanup() {
+        files?.reset()
         attempt++
         timeout?.cancel()
         timeout = null
@@ -126,6 +131,13 @@ class NearbyCoordinator(
             override fun bytes(endpoint: String, bytes: ByteArray) = event {
                 if (this@NearbyCoordinator.endpoint != endpoint || !_state.value.approved ||
                     _state.value.phase !in setOf(NearbyPhase.VERIFYING, NearbyPhase.MATCHING, NearbyPhase.CONNECTED)) return@event
+                if (FileProtocol.recognizes(bytes)) {
+                    val frame = runCatching { FileProtocol.decode(bytes) }.getOrNull()
+                    if (_state.value.phase != NearbyPhase.CONNECTED || frame == null || frame.session != session) {
+                        fail("Invalid file message or session. Connection closed.")
+                    } else files?.onControl(frame)
+                    return@event
+                }
                 val frame = runCatching { NearbyProtocol.decode(bytes) }.getOrNull()
                 if (frame == null || frame.session != session) {
                     fail("The peer sent an invalid or mismatched session message. Connection closed.")
@@ -145,13 +157,20 @@ class NearbyCoordinator(
                     }
                 }
             }
+            override fun file(endpoint: String, id: Long) = event {
+                if (this@NearbyCoordinator.endpoint == endpoint && _state.value.phase == NearbyPhase.CONNECTED && files != null) files?.onFile(id)
+                else port.cancelFile(id)
+            }
+            override fun fileUpdate(endpoint: String, id: Long, bytes: Long, total: Long, update: FileUpdate) = event {
+                if (this@NearbyCoordinator.endpoint == endpoint && _state.value.phase == NearbyPhase.CONNECTED) files?.onUpdate(id, bytes, total, update)
+            }
         }
         val ready = { event {
             if (_state.value.phase == NearbyPhase.STARTING) _state.value = NearbyState(
                 if (advertiser) NearbyPhase.ADVERTISING else NearbyPhase.DISCOVERING,
                 if (advertiser) "Advertising. Tap with the other phone in Scan mode." else "Looking for the exact session read over NFC…")
         } }
-        val failed = { event { fail("Nearby could not start. Check permissions, Bluetooth, Wi-Fi and Google Play services, then retry.") } }
+        val failed: (NearbyStartFailure) -> Unit = { failure -> event { fail(failure.description()) } }
         if (advertiser) port.advertise(NearbyProtocol.endpointName(session, true), listener, ready, failed)
         else port.discover(listener, ready, failed)
         timeout = scope.launch {
@@ -167,6 +186,7 @@ class NearbyCoordinator(
     private fun fail(message: String) = unavailable(message)
 
     private fun completeMatch() {
+        files?.connected(session)
         _state.value = _state.value.copy(phase = NearbyPhase.CONNECTED, digits = "",
             detail = "Connected and approved on both phones. You can move the phones apart.",
             received = if (pendingHello) NearbyProtocol.HELLO else "")
@@ -206,4 +226,20 @@ class NearbyCoordinator(
             } }
         }, { scope.launch { if (attempt == token) fail("Message delivery failed. Start again and retap.") } })
     }
+
+    fun sendFileControl(frame: FileProtocol.Frame, failed: () -> Unit) {
+        val peer = endpoint
+        val port = transport
+        if (_state.value.phase != NearbyPhase.CONNECTED || peer == null || port == null || frame.session != session) { failed(); return }
+        val token = attempt
+        port.send(peer, FileProtocol.encode(frame), {}, { scope.launch { if (token == attempt) failed() } })
+    }
+    fun sendFile(id: Long, failed: () -> Unit) {
+        val peer = endpoint
+        val port = transport
+        if (_state.value.phase != NearbyPhase.CONNECTED || peer == null || port == null) { failed(); return }
+        val token = attempt
+        port.sendFile(peer, id) { scope.launch { if (token == attempt) failed() } }
+    }
+    fun cancelFile(id: Long) { transport?.cancelFile(id) }
 }

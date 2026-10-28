@@ -25,6 +25,15 @@ class MainActivity : ComponentActivity() {
     private val adapter get() = getSystemService(NfcManager::class.java)?.defaultAdapter
     private var appliedRole: Role? = null
     private var pendingNearbyRole: Role? = null
+    private var pickerToken = -1L
+    private var incomingFileId: Long? = null
+    private val openFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        model.pickedFile(uri?.toString(), pickerToken)
+    }
+    private val saveFile = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        model.pickedDestination(uri?.toString(), pickerToken, incomingFileId)
+        incomingFileId = null
+    }
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         if (NearbyPermissions.missing(this).isEmpty()) startPendingNearbyRole()
         else { pendingNearbyRole = null; model.permissionsDenied() }
@@ -33,13 +42,24 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { LabScreen(model, ::chooseNearbyRole) }
+        setContent { LabScreen(model, ::chooseNearbyRole, ::chooseFile, ::chooseDestination) }
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 startPendingNearbyRole()
                 model.state.collect { if (it.role != appliedRole) applyRole(it.role) }
             }
         }
+    }
+
+    private fun chooseFile() {
+        pickerToken = model.beginFilePicker() ?: return
+        runCatching { openFile.launch(arrayOf("*/*")) }.onFailure { model.pickedFile(null, pickerToken) }
+    }
+    private fun chooseDestination() {
+        val offer = model.files.state.value.offer ?: return
+        pickerToken = model.beginFilePicker() ?: return
+        incomingFileId = offer.id
+        runCatching { saveFile.launch(offer.name) }.onFailure { model.pickedDestination(null, pickerToken, offer.id) }
     }
 
     private fun chooseNearbyRole(role: Role) {
@@ -78,8 +98,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
-        // Cancels even on rotation: resuming always requires explicit user intent.
-        model.stop()
+        // Only the explicitly launched system document picker may temporarily keep Nearby alive.
+        if (!model.pickerPending || isChangingConfigurations) model.stop()
         adapter?.let { nfc ->
             runCatching { nfc.disableReaderMode(this) }
             if (packageManager.hasSystemFeature("android.hardware.nfc.hce")) {
@@ -88,5 +108,9 @@ class MainActivity : ComponentActivity() {
         }
         appliedRole = null
         super.onPause()
+    }
+    override fun onDestroy() {
+        if (isChangingConfigurations) model.stop()
+        super.onDestroy()
     }
 }

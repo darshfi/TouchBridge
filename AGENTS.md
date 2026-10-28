@@ -385,6 +385,15 @@ Test:
 
 ## 10. Git and GitHub
 
+### Branch safety (developer preference)
+
+- Put new features and fixes on separate `feature/` or `fix/` branches.
+- Preserve `stable/nfc-verified` as the device-verified NFC checkpoint.
+- Keep `main` unchanged while experimental changes undergo build/CI and phone testing.
+- Do not merge experimental Nearby changes into `main` before the developer confirms device tests.
+- Never rewrite or force-push checkpoint history.
+- Keep `.codex-attachments/` and phone screenshots outside commits unless explicitly requested.
+
 Use Git from the beginning.
 
 The project will eventually be hosted in a private GitHub repository.
