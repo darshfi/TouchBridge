@@ -1,6 +1,6 @@
 # v0.3.0 — file transfer device acceptance
 
-Branch: `feature/file-transfer`. Baseline `stable/nearby-verified-v0.2.2` preserves the previous device-tested connection build; `stable/nfc-verified` remains untouched. File sharing is implemented but has not been physically verified yet. Install the same **0.3.0** APK on both phones.
+The developer confirmed basic v0.3.0 file sharing worked on 2026-10-28 and authorized merging `feature/file-transfer` to `main`. `stable/file-transfer-verified-v0.3.0` preserves that checkpoint. Baseline `stable/nearby-verified-v0.2.2` preserves the previous device-tested connection build; `stable/nfc-verified` remains untouched. The detailed cases below still need individual evidence. Install the same **0.3.0** APK on both phones.
 
 ## Build and install
 

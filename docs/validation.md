@@ -1,6 +1,14 @@
 # Validation record
 
-Current checkpoint: v0.3.0 file sharing on `feature/file-transfer`. Earlier version measurements below are retained as historical build records.
+Current checkpoint: v0.3.0 file sharing, confirmed working by the developer and approved for merge to `main` on 2026-10-28. Earlier version measurements below are retained as historical build records.
+
+## Developer acceptance and continuation
+
+After installing the v0.3.0 build from CI run 40699854907 (code commit `514f38a`), the developer reported "it worked" and explicitly requested push/merge, with development to continue later. Record this as developer-reported successful physical file sharing, not as a pass for every test in the acceptance matrix. No new recordings, file hashes, sizes, direction-specific results or failure-case results were supplied with this confirmation.
+
+Promote the tested `feature/file-transfer` history to `main` and preserve it as `stable/file-transfer-verified-v0.3.0`. Keep `stable/nfc-verified` and `stable/nearby-verified-v0.2.2` intact. No application code changes accompany this acceptance record; the previous 73-test build, lint and CI evidence still apply.
+
+For the next session: continue on a new feature/fix branch from the merged main checkpoint. Remaining work includes the outstanding reliability/offline matrix, additional sharing types/share-sheet intake and persistent history. The persistent identity/trusted-device idea remains deferred in [trusted-devices.md](trusted-devices.md). Do not infer automatic trust or comprehensive hardware validation from the successful basic transfer.
 
 ## v0.3.0 — file sharing software validation
 
@@ -12,7 +20,7 @@ The system document picker is a bounded two-minute exception to foreground teard
 
 Windows `.\gradlew.bat testDebugUnitTest assembleDebug lintDebug --console=plain` passed. **73 unit tests, zero failures/errors/skips**: existing 50 plus file framing/validation, actual bounded-buffer content verification (empty/multiple buffers, corruption/truncation/oversize/cancellation), transfer consent, saved receipts, progress/order handling, timeouts, cancellation/cleanup, stale callbacks, concurrent offers and a simulated two-peer transfer in both directions. Lint passed with zero errors (existing toolchain update advisories plus conservative cache-space advice). Packaged APK reports **0.3.0 (6)**, min API 26 / target 37, and `apksigner verify --verbose` confirms a valid v2 debug signature. The existing merged-manifest Wi-Fi permission regression check passes.
 
-**No physical file transfer is claimed.** The two-phone acceptance matrix, exact build/install commands and byte-for-byte hash comparison are in [file-transfer-testing.md](file-transfer-testing.md). Next checkpoint is actual Samsung/Pixel file testing and fixes from that evidence, followed by additional sharing types/history. The requested future persistent identity/trusted-device idea is recorded in [trusted-devices.md](trusted-devices.md); no hardware identifiers or automatic trust were added.
+At build time, physical file sharing awaited testing; the developer subsequently confirmed it worked as recorded above. The remaining two-phone acceptance matrix, exact build/install commands and byte-for-byte hash comparison are in [file-transfer-testing.md](file-transfer-testing.md). Continue reliability testing and additional sharing types/history in a future session. The requested future persistent identity/trusted-device idea is recorded in [trusted-devices.md](trusted-devices.md); no hardware identifiers or automatic trust were added.
 
 [GitHub CI run 40699854907](https://github.com/darshfi/TouchBridge/actions/runs/40699854907) passed for code commit `514f38a`, uploading `touchbridge-debug` and `android-check-reports`. The downloaded CI APK was independently inspected: 0.3.0 (6), min API 26 / target 37, valid v2 debug signature. The downloaded reports confirm 73 passing tests and lint with zero errors/three advisories. Its APK and reports remain outside Git.
 

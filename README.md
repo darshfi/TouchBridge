@@ -4,7 +4,7 @@ A native Kotlin / Compose NFC experiment for Pixel 9a and Galaxy S21 Ultra. Inst
 
 ## Current checkpoint
 
-Version **0.3.0** adds file/photo/video sharing over Nearby FILE payloads, recipient approval, a system save picker, progress, cancellation, size/SHA-256 verification, and a saved-file receipt. **File sharing awaits two-phone testing.** The previous **0.2.2** connection/hello happy path passed developer tests with both NFC roles and message directions on Pixel 9a (API 37) and Galaxy S21 Ultra (API 35); it is preserved at `stable/nearby-verified-v0.2.2`. See [validation.md](docs/validation.md) and [file-transfer-testing.md](docs/file-transfer-testing.md). Offline/failure testing, share-sheet intake, contacts, Wi-Fi credentials, manual discovery and history remain later work.
+Version **0.3.0** adds file/photo/video sharing over Nearby FILE payloads, recipient approval, a system save picker, progress, cancellation, size/SHA-256 verification, and a saved-file receipt. **The developer confirmed file sharing worked on the phones on 2026-10-28 and authorized merging to main.** The individual reliability scenarios remain unverified. The previous **0.2.2** connection/hello happy path passed developer tests with both NFC roles and message directions on Pixel 9a (API 37) and Galaxy S21 Ultra (API 35); it is preserved at `stable/nearby-verified-v0.2.2`. See [validation.md](docs/validation.md) and [file-transfer-testing.md](docs/file-transfer-testing.md). Offline/failure testing, share-sheet intake, contacts, Wi-Fi credentials, manual discovery and history remain later work.
 
 The app shows a real reader result only after SELECT and GET_SESSION both succeed. Unit tests use a simulated transport and do not establish that either phone's NFC hardware works.
 
@@ -109,7 +109,7 @@ Leaving the app or rotating deliberately stops the current role, except for the 
 
 ## Git, CI and delivery
 
-New work uses separate feature/fix branches and device-tested changes are merged only after developer confirmation. `stable/nfc-verified` preserves the device-tested v0.1.1 NFC implementation at `2cb24ec`. `stable/nearby-verified-v0.2.2` preserves the working connection build at `2762d09`. File sharing is isolated on `feature/file-transfer`; `main` stays unchanged during device testing. Phone screenshots/attachments are ignored by Git.
+New work uses separate feature/fix branches and device-tested changes are merged only after developer confirmation. `stable/nfc-verified` preserves the device-tested v0.1.1 NFC implementation at `2cb24ec`. `stable/nearby-verified-v0.2.2` preserves the working connection build at `2762d09`. The developer approved promoting `feature/file-transfer` to `main`; `stable/file-transfer-verified-v0.3.0` preserves this confirmed checkpoint. Phone screenshots/attachments are ignored by Git.
 
 The private repository is [darshfi/TouchBridge](https://github.com/darshfi/TouchBridge). The Gradle wrapper and its distribution SHA-256 are checked in. CI (`.github/workflows/android-ci.yml`) uses an Ubuntu runner, JDK 21, Android SDK, wrapper validation/caching via setup-gradle, unit tests, lint and a debug build. After success, **touchbridge-debug** is available under the workflow run's Artifacts for seven days. Reports are uploaded even on failure. Check [Actions](https://github.com/darshfi/TouchBridge/actions/workflows/android-ci.yml) for the actual result for each commit. No Play deployment or production signing exists.
 
