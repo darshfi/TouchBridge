@@ -1,6 +1,18 @@
 # Validation record
 
-Current checkpoint: v0.2.0 NFC-to-Nearby handoff. Earlier version measurements below are retained as historical build records.
+Current checkpoint: v0.3.0 file sharing on `feature/file-transfer`. Earlier version measurements below are retained as historical build records.
+
+## v0.3.0 — file sharing software validation
+
+The developer confirmed v0.2.2 worked smoothly, and authorized the next milestone. That build is preserved on `stable/nearby-verified-v0.2.2` at `2762d09`; the original `stable/nfc-verified` and `main` remain unchanged.
+
+Implemented a bounded file control codec (`transfer/FileProtocol.kt`), pure transfer coordinator, scoped Android file storage, Nearby FILE payload callbacks and progress, and explicit sender/receiver UI. Android OpenDocument chooses sources; CreateDocument chooses destinations after recipient approval. The source is snapshotted to private disk with known length/SHA-256. The receiver waits for actual SDK completion, copies through scoped URIs with bounded buffers, checks size/hash, closes the destination stream and sends a saved receipt. Sender success requires both actual payload completion and that receipt. Cancellation/disconnect/error attempts to remove partial output after the saving job has stopped. Session/generation checks reject late callbacks. No new broad storage permissions or identity/trust features were introduced.
+
+The system document picker is a bounded two-minute exception to foreground teardown; other app switches and rotation still stop the session. Both phones must use 0.3.0. Old 0.2.x peers do not understand the file control protocol. One file is supported at a time; cloud-provider stalls, large files, storage behavior and actual picker lifecycle must be tested on both target phones.
+
+Windows `.\gradlew.bat testDebugUnitTest assembleDebug lintDebug --console=plain` passed. **73 unit tests, zero failures/errors/skips**: existing 50 plus file framing/validation, actual bounded-buffer content verification (empty/multiple buffers, corruption/truncation/oversize/cancellation), transfer consent, saved receipts, progress/order handling, timeouts, cancellation/cleanup, stale callbacks, concurrent offers and a simulated two-peer transfer in both directions. Lint passed with zero errors (existing toolchain update advisories plus conservative cache-space advice). Packaged APK reports **0.3.0 (6)**, min API 26 / target 37, and `apksigner verify --verbose` confirms a valid v2 debug signature. The existing merged-manifest Wi-Fi permission regression check passes.
+
+**No physical file transfer is claimed.** The two-phone acceptance matrix, exact build/install commands and byte-for-byte hash comparison are in [file-transfer-testing.md](file-transfer-testing.md). Next checkpoint is actual Samsung/Pixel file testing and fixes from that evidence, followed by additional sharing types/history. The requested future persistent identity/trusted-device idea is recorded in [trusted-devices.md](trusted-devices.md); no hardware identifiers or automatic trust were added.
 
 ## Real-device happy-path evidence — v0.2.2
 

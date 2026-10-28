@@ -9,6 +9,8 @@ interface NearbyTransport {
         fun result(endpoint: String, success: Boolean)
         fun disconnected(endpoint: String)
         fun bytes(endpoint: String, bytes: ByteArray)
+        fun file(endpoint: String, id: Long) {}
+        fun fileUpdate(endpoint: String, id: Long, bytes: Long, total: Long, update: dev.touchbridge.transfer.FileUpdate) {}
     }
     fun advertise(name: String, listener: Listener, ready: () -> Unit, failed: (NearbyStartFailure) -> Unit)
     fun discover(listener: Listener, ready: () -> Unit, failed: (NearbyStartFailure) -> Unit)
@@ -17,5 +19,7 @@ interface NearbyTransport {
     fun reject(endpoint: String)
     fun send(endpoint: String, bytes: ByteArray, sent: () -> Unit, failed: () -> Unit)
     fun stopSearching()
+    fun sendFile(endpoint: String, id: Long, failed: () -> Unit) { failed() }
+    fun cancelFile(id: Long) {}
     fun close()
 }

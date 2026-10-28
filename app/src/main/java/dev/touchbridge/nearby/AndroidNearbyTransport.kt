@@ -15,10 +15,12 @@ import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.nearby.Nearby
 import com.google.android.gms.nearby.connection.*
 import com.google.android.gms.tasks.Task
+import dev.touchbridge.transfer.AndroidFileStorage
+import dev.touchbridge.transfer.FileUpdate
 
 /** Owns one foreground attempt. Never retains an Activity or logs endpoint metadata/codes. */
 @SuppressLint("MissingPermission") // Every entry is gated by NearbyPermissions in the foreground Activity.
-class AndroidNearbyTransport(context: Context) : NearbyTransport {
+class AndroidNearbyTransport(context: Context, private val files: AndroidFileStorage? = null) : NearbyTransport {
     private val client = Nearby.getConnectionsClient(context.applicationContext)
     private val main = Handler(Looper.getMainLooper())
     private fun onMain(block: () -> Unit) {
@@ -28,6 +30,7 @@ class AndroidNearbyTransport(context: Context) : NearbyTransport {
     private lateinit var listener: NearbyTransport.Listener
     private data class Delivery(val sent: () -> Unit, val failed: () -> Unit)
     private val deliveries = mutableMapOf<Long, Delivery>()
+    private val fileIds = mutableSetOf<Long>()
 
     private val lifecycle = object : ConnectionLifecycleCallback() {
         override fun onConnectionInitiated(endpointId: String, info: ConnectionInfo) = onMain {
@@ -40,12 +43,30 @@ class AndroidNearbyTransport(context: Context) : NearbyTransport {
     }
     private val payloads = object : PayloadCallback() {
         override fun onPayloadReceived(endpointId: String, payload: Payload) = onMain {
-            if (closed) return@onMain
+            if (closed) {
+                if (payload.type == Payload.Type.FILE && files != null) {
+                    files.receive(payload); files.releaseUnclaimed(payload.id)
+                } else runCatching { payload.close() }
+                return@onMain
+            }
             if (payload.type == Payload.Type.BYTES) listener.bytes(endpointId, payload.asBytes() ?: byteArrayOf())
-            else { runCatching { client.cancelPayload(payload.id) }; listener.bytes(endpointId, byteArrayOf()) }
+            else if (payload.type == Payload.Type.FILE && files != null) {
+                files.receive(payload); fileIds.add(payload.id); listener.file(endpointId, payload.id)
+            } else { runCatching { client.cancelPayload(payload.id) }; runCatching { payload.close() }; listener.bytes(endpointId, byteArrayOf()) }
         }
         override fun onPayloadTransferUpdate(endpointId: String, update: PayloadTransferUpdate) = onMain {
             if (closed) return@onMain
+            if (update.payloadId in fileIds) {
+                val status = when (update.status) {
+                    PayloadTransferUpdate.Status.SUCCESS -> FileUpdate.SUCCESS
+                    PayloadTransferUpdate.Status.FAILURE -> FileUpdate.FAILURE
+                    PayloadTransferUpdate.Status.CANCELED -> FileUpdate.CANCELED
+                    else -> FileUpdate.PROGRESS
+                }
+                listener.fileUpdate(endpointId, update.payloadId, update.bytesTransferred, update.totalBytes, status)
+                if (status != FileUpdate.PROGRESS) fileIds.remove(update.payloadId)
+                return@onMain
+            }
             when (update.status) {
                 PayloadTransferUpdate.Status.SUCCESS -> deliveries.remove(update.payloadId)?.sent?.invoke()
                 PayloadTransferUpdate.Status.FAILURE, PayloadTransferUpdate.Status.CANCELED -> deliveries.remove(update.payloadId)?.failed?.invoke()
@@ -120,11 +141,25 @@ class AndroidNearbyTransport(context: Context) : NearbyTransport {
         }.onFailure { if (!closed) deliveries.remove(payload.id)?.failed?.invoke() }
     }
     override fun stopSearching() { runCatching { client.stopAdvertising() }; runCatching { client.stopDiscovery() } }
+    override fun sendFile(endpoint: String, id: Long, failed: () -> Unit) {
+        val payload = files?.outgoingPayload(id)
+        if (closed || payload == null) { failed(); return }
+        fileIds.add(id)
+        runCatching { client.sendPayload(endpoint, payload).addOnFailureListener { if (!closed) failed() } }
+            .onFailure { if (!closed) failed() }
+    }
+    override fun cancelFile(id: Long) {
+        runCatching { client.cancelPayload(id) }
+        files?.releaseUnclaimed(id)
+    }
     private fun stopSdk() { stopSearching(); client.stopAllEndpoints() }
     override fun close() {
         if (closed) return
         closed = true
         deliveries.clear()
+        // Coordinator cleanup owns approved file handles and waits for any saving job to stop.
+        fileIds.forEach { id -> runCatching { client.cancelPayload(id) }; files?.releaseUnclaimed(id) }
+        fileIds.clear()
         runCatching { stopSdk() }
     }
 

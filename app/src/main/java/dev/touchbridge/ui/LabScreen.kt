@@ -22,11 +22,13 @@ import dev.touchbridge.nearby.NearbyPhase
 import dev.touchbridge.nearby.NearbyState
 import dev.touchbridge.BuildConfig
 import dev.touchbridge.nearby.AndroidNearbyTransport
+import dev.touchbridge.transfer.FilePhase
 
 @Composable
-fun LabScreen(model: LabViewModel, chooseNearbyRole: (Role) -> Unit) {
+fun LabScreen(model: LabViewModel, chooseNearbyRole: (Role) -> Unit, chooseFile: () -> Unit, chooseDestination: () -> Unit) {
     val state by model.state.collectAsStateWithLifecycle()
     val nearby by model.nearby.state.collectAsStateWithLifecycle()
+    val file by model.files.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var capabilities by remember { mutableStateOf(Capabilities.detect(context)) }
     var nearbyDiagnostics by remember { mutableStateOf(AndroidNearbyTransport.diagnostics(context)) }
@@ -71,13 +73,36 @@ fun LabScreen(model: LabViewModel, chooseNearbyRole: (Role) -> Unit) {
                     Text("Built for two unlocked phones", style = MaterialTheme.typography.titleLarge)
                     Text("This build tests genuine ISO-DEP/APDU communication. Choose Emulate on one phone and Scan on the other. Swap roles to test both NFC implementations.")
                     Text("NFC exchanges a public, random session ID and a greeting. Connect uses this ID to find the tapped phone over Nearby. Compare codes and accept on both phones before sending a message. Internet is not required.")
-                    Text("Foreground only. Leaving this app or rotating cancels the active role. No tap-to-launch, locked-screen transfer, Android Beam, or saved Wi-Fi password access.")
-                    Text("NFC and its sender-status fix passed developer tests in both roles on Pixel 9a and Galaxy S21 Ultra. Nearby hardware tests are pending.", color = MaterialTheme.colorScheme.primary)
+                    Text("Keep both phones unlocked with TouchBridge open. The system file picker can temporarily keep the connection alive; other app switches and rotation end the session. No tap-to-launch, locked-screen transfer, Android Beam, or saved Wi-Fi password access.")
+                    Text("NFC and Nearby hello passed developer tests in both roles on Pixel 9a and Galaxy S21 Ultra. File sharing awaits device testing.", color = MaterialTheme.colorScheme.primary)
                 } else {
                     if (connect) {
                         Text("Tap, compare, connect", style = MaterialTheme.typography.titleLarge)
                         Text("Enable Bluetooth and Wi-Fi on both phones. Nearby needs permission to find devices; older Android versions also require Location, and Android 17 requires local-network access. Location is not stored or used for tracking.")
                         NearbyCard(nearby, model.nearby::sendHello)
+                        if (nearby.phase == NearbyPhase.CONNECTED) {
+                            ElevatedCard(Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text("Share a file", style = MaterialTheme.typography.titleLarge)
+                                    Text(file.detail)
+                                    file.offer?.let { offer ->
+                                        Text(offer.name, style = MaterialTheme.typography.titleMedium)
+                                        Text(formatBytes(offer.size))
+                                        if (file.phase in setOf(FilePhase.TRANSFERRING, FilePhase.WAITING_RECEIPT, FilePhase.SUCCESS)) {
+                                            LinearProgressIndicator(progress = { if (offer.size == 0L) 1f else (file.bytes.toDouble() / offer.size).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                                            Text("${formatBytes(file.bytes)} / ${formatBytes(offer.size)}" + if (file.bytesPerSecond > 0) " · ${formatBytes(file.bytesPerSecond)}/s" else "")
+                                        }
+                                    }
+                                    if (file.phase in setOf(FilePhase.PREPARING, FilePhase.SAVING)) LinearProgressIndicator(Modifier.fillMaxWidth())
+                                    if (file.phase == FilePhase.INCOMING) {
+                                        Button(onClick = chooseDestination) { Text("Accept · choose save location") }
+                                        TextButton(onClick = model.files::reject) { Text("Decline file") }
+                                    } else if (file.busy) TextButton(onClick = model.files::cancel) { Text("Cancel transfer") }
+                                    Button(onClick = chooseFile, enabled = !file.busy) { Text("Choose file, photo, or video") }
+                                    Text("One file at a time. The receiver approves each file. Keep both apps open until saving finishes.", style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_WIRELESS_SETTINGS)) }) { Text("Bluetooth & Wi-Fi") }
                             TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
@@ -108,7 +133,7 @@ fun LabScreen(model: LabViewModel, chooseNearbyRole: (Role) -> Unit) {
                     if (!capabilities.hce) Text("This device does not report Host Card Emulation support.")
                     if (state.role != Role.IDLE || (connect && nearby.phase != NearbyPhase.IDLE)) TextButton(onClick = { model.stop() }) { Text("Stop session") }
                     Text("Hold the backs of the phones together and slowly adjust their positions. Antenna placement varies; remove thick or magnetic cases if needed.", style = MaterialTheme.typography.bodyMedium)
-                    Text(if (connect) "Approve on both phones, then send a hello. File sharing comes next." else "NFC Lab · wireless connection disabled", style = MaterialTheme.typography.labelLarge)
+                    Text(if (connect) "Approve on both phones, then share a file or send a hello." else "NFC Lab · wireless connection disabled", style = MaterialTheme.typography.labelLarge)
                 }
                 HorizontalDivider()
                 TextButton(onClick = { diagnostics = !diagnostics }) { Text(if (diagnostics) "Hide diagnostics" else "Show diagnostics") }
@@ -119,6 +144,13 @@ fun LabScreen(model: LabViewModel, chooseNearbyRole: (Role) -> Unit) {
             }
         }
     }
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1024L * 1024 * 1024 -> "%.1f GB".format(bytes.toDouble() / (1024L * 1024 * 1024))
+    bytes >= 1024L * 1024 -> "%.1f MB".format(bytes.toDouble() / (1024L * 1024))
+    bytes >= 1024 -> "%.1f KB".format(bytes.toDouble() / 1024)
+    else -> "$bytes bytes"
 }
 
 @Composable

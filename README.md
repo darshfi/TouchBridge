@@ -4,7 +4,7 @@ A native Kotlin / Compose NFC experiment for Pixel 9a and Galaxy S21 Ultra. Inst
 
 ## Current checkpoint
 
-Version **0.2.2** implements NFC-bootstrapped Nearby Connections, matching-code approval, encrypted session matching and an explicitly sent hello. **Developer recordings confirm the real-device happy path with both NFC roles and hello delivery in both directions** on Pixel 9a (API 37) and Galaxy S21 Ultra (API 35). Offline operation, physical separation and the remaining failure/recovery tests still need separate evidence. See [validation.md](docs/validation.md). File transfer, share-sheet receiving, contacts, Wi-Fi credentials, manual discovery and history remain subsequent work.
+Version **0.3.0** adds file/photo/video sharing over Nearby FILE payloads, recipient approval, a system save picker, progress, cancellation, size/SHA-256 verification, and a saved-file receipt. **File sharing awaits two-phone testing.** The previous **0.2.2** connection/hello happy path passed developer tests with both NFC roles and message directions on Pixel 9a (API 37) and Galaxy S21 Ultra (API 35); it is preserved at `stable/nearby-verified-v0.2.2`. See [validation.md](docs/validation.md) and [file-transfer-testing.md](docs/file-transfer-testing.md). Offline/failure testing, share-sheet intake, contacts, Wi-Fi credentials, manual discovery and history remain later work.
 
 The app shows a real reader result only after SELECT and GET_SESSION both succeed. Unit tests use a simulated transport and do not establish that either phone's NFC hardware works.
 
@@ -19,9 +19,9 @@ Install the same APK on both phones, unlock them, and enable NFC, Bluetooth and 
 3. Both phones show a four-digit code. **Compare the codes on the actual phones and tap Codes match · accept on each.** Reject mismatches; an NFC tap alone is not authentication.
 4. Wait for **Connected to the tapped phone** on both. The phones have now matched the NFC session over the approved encrypted link. Move them apart.
 5. Tap **Send hello** on either phone. The other shows **Received: Hello from the other phone**. Test the reverse direction in the same connection.
-6. **Stop session**, leaving the app, locking or rotating disconnects and clears pairing metadata. Starting again requires a new tap and new approvals. Switch to **NFC Lab** to test NFC independently without wireless permissions.
+6. **Stop session**, leaving the app, locking or rotating disconnects and clears pairing metadata. The explicitly launched system document picker can temporarily retain the approved connection for up to two minutes. Starting again requires a new tap and new approvals. Switch to **NFC Lab** to test NFC independently without wireless permissions.
 
-See [nearby-testing.md](docs/nearby-testing.md) for rejection, timeout, permission, cancellation and offline tests. This milestone implements a small fixed BYTES hello, not files or arbitrary clipboard content.
+See [nearby-testing.md](docs/nearby-testing.md) for rejection, timeout, permission, cancellation and offline tests. For files, choose **Choose file, photo, or video** after connecting. The receiver accepts and selects a destination before file bytes start. Both must wait for the verified/saved result. One file at a time; source files use a temporary private disk snapshot. See [file-transfer-testing.md](docs/file-transfer-testing.md) for exact acceptance steps and limitations.
 
 ## Build on Windows
 
@@ -82,7 +82,7 @@ The app requests foreground routing with `setPreferredService` for its category-
 * HCE only serves explicitly opened foreground sessions. Its callback does bounded in-memory work. Reader transceive runs on Dispatchers.IO, closes ISO-DEP in finally, uses a 3-second per-command timeout, and suppresses overlapping/repeated callbacks.
 * NFC is proximity metadata, **not authentication**. Nearby endpoint names contain the public ID and role. Nearby's authentication digits and approval on both phones protect against impersonation; a bounded MATCH control frame then verifies both endpoints agree on the NFC session. Only explicit Send hello transmits the user-visible message. Logs contain sanitized phase names, never IDs, codes, secrets or message contents.
 
-Leaving the app or rotating deliberately stops the current role. Restart explicitly after resuming. No locked-screen sharing, tap-to-launch guarantee, background radio services, broad storage access, analytics, or automatic Wi-Fi password access.
+Leaving the app or rotating deliberately stops the current role, except for the bounded system document picker flow. Restart explicitly after resuming. No locked-screen sharing, tap-to-launch guarantee, background radio services, broad storage access, analytics, or automatic Wi-Fi password access.
 
 ## Architecture
 
@@ -105,11 +105,11 @@ Leaving the app or rotating deliberately stops the current role. Restart explici
 | Bluetooth scan/connect/advertise | Runtime on API 31+ | Nearby radios; scanning asserts neverForLocation |
 | `NEARBY_WIFI_DEVICES` | Runtime on API 33+ | Nearby Wi-Fi; neverForLocation |
 | `ACCESS_LOCAL_NETWORK` | Runtime on API 37+ / target 37 | Nearby's default Wi-Fi LAN transport under Android 17 enforcement |
-| Storage, contacts, background location | Not requested | Files/contacts/background sharing are not part of this milestone |
+| Broad storage, contacts, background location | Not requested | File access uses explicit SAF picker grants; contacts/background sharing are later work |
 
 ## Git, CI and delivery
 
-New work uses separate feature/fix branches and device-tested changes are merged only after developer confirmation. `stable/nfc-verified` preserves the device-tested v0.1.1 NFC implementation at `2cb24ec`. `main` stays unchanged while `fix/nearby-startup-diagnostics` is tested. Phone screenshots/attachments are ignored by Git.
+New work uses separate feature/fix branches and device-tested changes are merged only after developer confirmation. `stable/nfc-verified` preserves the device-tested v0.1.1 NFC implementation at `2cb24ec`. `stable/nearby-verified-v0.2.2` preserves the working connection build at `2762d09`. File sharing is isolated on `feature/file-transfer`; `main` stays unchanged during device testing. Phone screenshots/attachments are ignored by Git.
 
 The private repository is [darshfi/TouchBridge](https://github.com/darshfi/TouchBridge). The Gradle wrapper and its distribution SHA-256 are checked in. CI (`.github/workflows/android-ci.yml`) uses an Ubuntu runner, JDK 21, Android SDK, wrapper validation/caching via setup-gradle, unit tests, lint and a debug build. After success, **touchbridge-debug** is available under the workflow run's Artifacts for seven days. Reports are uploaded even on failure. Check [Actions](https://github.com/darshfi/TouchBridge/actions/workflows/android-ci.yml) for the actual result for each commit. No Play deployment or production signing exists.
 
@@ -127,3 +127,7 @@ Use `git status` before switching computers. Commit or stash changes before `git
 ## Verified reference sources
 
 Toolchain selection was checked against official [AGP 9.4 compatibility](https://developer.android.com/build/releases/agp-9-4-0-release-notes), [Compose BOM](https://developer.android.com/develop/ui/compose/bom), [Activity releases](https://developer.android.com/jetpack/androidx/releases/activity), [Lifecycle releases](https://developer.android.com/jetpack/androidx/releases/lifecycle), Google Maven metadata, and [Android HCE documentation](https://developer.android.com/develop/connectivity/nfc/hce). The Kotlin compiler and Compose compiler are overridden together to 2.3.21 using AGP's [documented KGP override](https://developer.android.com/build/releases/agp-9-0-0-release-notes#runtime-dependency-on-the-kotlin-gradle-plugin), because Nearby 19.5.1's metadata is newer than AGP's bundled compiler can read. Gradle remains 9.6.0; CI uses JDK 21 and Windows uses installed JDK 23. Minimum API is 26, compile/target is 37. Nearby behavior follows Google's [connection management](https://developers.google.com/nearby/connections/android/manage-connections), [permissions](https://developers.google.com/nearby/connections/android/get-started), and Android's [local-network rules](https://developer.android.com/privacy-and-security/local-network-permission).
+
+## Future trusted devices
+
+A persistent per-installation identity and explicitly trusted devices are deferred. The intended identity is backed by a private key, with proof of possession rather than trusting an ID string. See [trusted-devices.md](docs/trusted-devices.md) for the recorded idea, privacy controls and reinstall/reset behavior.

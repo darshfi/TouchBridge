@@ -21,6 +21,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
+import dev.touchbridge.transfer.*
 
 class LabViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(LabState())
@@ -32,10 +33,21 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
     private var emulationGeneration: Long? = null
     private var wireless = false
     private var lastNearbyPhase: NearbyPhase? = null
+    private val fileStorage = AndroidFileStorage(application)
     val nearby = NearbyCoordinator(viewModelScope, SystemClock::elapsedRealtime,
-        { AndroidNearbyTransport(application) }, { NfcSessionRepository.sessions.status.value.served })
+        { AndroidNearbyTransport(application, fileStorage) }, { NfcSessionRepository.sessions.status.value.served })
+    val files = FileTransferCoordinator(viewModelScope, SystemClock::elapsedRealtime, fileStorage, object : FileTransferLink {
+        override fun control(frame: FileProtocol.Frame, failed: () -> Unit) = nearby.sendFileControl(frame, failed)
+        override fun sendFile(id: Long, failed: () -> Unit) = nearby.sendFile(id, failed)
+        override fun cancelFile(id: Long) = nearby.cancelFile(id)
+    })
+    private var pickerTimeout: kotlinx.coroutines.Job? = null
+    var pickerPending = false
+        private set
+    private var pickerSession = 0L
 
     init {
+        nearby.files = files
         viewModelScope.launch {
             NfcSessionRepository.sessions.status.collect { updateEmulationStatus() }
         }
@@ -109,6 +121,8 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stop(title: String = "Ready to connect", detail: String = "Choose a role on each phone to test a real NFC exchange.") {
+        pickerTimeout?.cancel()
+        pickerPending = false
         epoch++
         wireless = false
         nearby.stop()
@@ -116,6 +130,29 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
         NfcSessionRepository.sessions.stop()
         reader.close()
         _state.value = LabState(title = title, detail = detail)
+    }
+
+    fun beginFilePicker(): Long? {
+        if (nearby.state.value.phase != NearbyPhase.CONNECTED || pickerPending) return null
+        pickerPending = true
+        pickerSession = epoch
+        pickerTimeout = viewModelScope.launch { delay(120_000); if (pickerPending) stop("Session ended", "The file picker timed out. Reconnect to try again.") }
+        return pickerSession
+    }
+    fun pickedFile(source: String?, token: Long) {
+        val valid = finishPicker(token)
+        if (valid && source != null) files.offer(source)
+    }
+    fun pickedDestination(destination: String?, token: Long, id: Long?) {
+        val valid = finishPicker(token) && id == files.state.value.offer?.id
+        if (destination != null) {
+            if (valid) files.accept(destination)
+            else viewModelScope.launch { fileStorage.deleteDestination(destination) }
+        } else if (valid) files.reject()
+    }
+    private fun finishPicker(token: Long): Boolean {
+        pickerTimeout?.cancel(); pickerPending = false
+        return token == epoch && nearby.state.value.phase == NearbyPhase.CONNECTED
     }
 
     fun permissionsDenied() = nearby.unavailable("Nearby permissions were not granted. You can retry or enable them in App settings. NFC Lab still works without them.")
