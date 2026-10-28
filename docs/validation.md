@@ -14,6 +14,8 @@ Windows `.\gradlew.bat testDebugUnitTest assembleDebug lintDebug --console=plain
 
 **No physical file transfer is claimed.** The two-phone acceptance matrix, exact build/install commands and byte-for-byte hash comparison are in [file-transfer-testing.md](file-transfer-testing.md). Next checkpoint is actual Samsung/Pixel file testing and fixes from that evidence, followed by additional sharing types/history. The requested future persistent identity/trusted-device idea is recorded in [trusted-devices.md](trusted-devices.md); no hardware identifiers or automatic trust were added.
 
+[GitHub CI run 40699854907](https://github.com/darshfi/TouchBridge/actions/runs/40699854907) passed for code commit `514f38a`, uploading `touchbridge-debug` and `android-check-reports`. The downloaded CI APK was independently inspected: 0.3.0 (6), min API 26 / target 37, valid v2 debug signature. The downloaded reports confirm 73 passing tests and lint with zero errors/three advisories. Its APK and reports remain outside Git.
+
 ## Real-device happy-path evidence — v0.2.2
 
 Reviewed the developer's two screen recordings supplied on 2026-10-28:
