@@ -6,7 +6,6 @@ import android.util.Log
 
 class TouchBridgeHceService : HostApduService() {
     private val engine = ApduEngine(NfcSessionRepository.sessions) {
-        NfcSessionRepository.recordRead()
         Log.i("TouchBridgeHce", "Session APDU served")
     }
 

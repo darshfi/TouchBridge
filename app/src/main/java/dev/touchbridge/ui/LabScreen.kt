@@ -43,14 +43,14 @@ fun LabScreen(model: LabViewModel) {
                     Text("This build tests genuine ISO-DEP/APDU communication. Choose Emulate on one phone and Scan on the other. Swap roles to test both NFC implementations.")
                     Text("NFC exchanges a public, random session ID and a greeting. It does not authenticate a device. Nearby authentication and file transfers are the next milestone.")
                     Text("Foreground only. Leaving this app or rotating cancels the active role. No tap-to-launch, locked-screen transfer, Android Beam, or saved Wi-Fi password access.")
-                    Text("Hardware validation pending on Pixel 9a and Galaxy S21 Ultra.", color = MaterialTheme.colorScheme.primary)
+                    Text("NFC exchange tested in both roles on Pixel 9a and Galaxy S21 Ultra. Sender status fix awaits device retesting.", color = MaterialTheme.colorScheme.primary)
                 } else {
                     ElevatedCard(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text(state.title, style = MaterialTheme.typography.headlineSmall)
                             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                             Text(state.detail)
-                            if (state.role == Role.EMULATE) Text("Session expires in ${state.secondsLeft}s", style = MaterialTheme.typography.labelLarge)
+                            if (state.role == Role.EMULATE && !state.success) Text("Session expires in ${state.secondsLeft}s", style = MaterialTheme.typography.labelLarge)
                         }
                     }
                     if (!capabilities.nfc || !capabilities.enabled) {

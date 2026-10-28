@@ -29,7 +29,15 @@ The first environment setup needed official archive downloads with curl after Ja
 
 The original Windows checkpoint had CI configured but had not run on GitHub. The project has since been published to the private [darshfi/TouchBridge](https://github.com/darshfi/TouchBridge) repository. The first GitHub run stopped during SDK setup because the action's default `tools` package is no longer provided. The workflow now pins current command-line tools and requests only `platform-tools` before installing the required platform/build-tools. See [Actions](https://github.com/darshfi/TouchBridge/actions/workflows/android-ci.yml) for current execution results and downloadable APK artifacts.
 
-**Hardware validation pending.** `adb devices -l` returned an empty device list on Windows. No physical NFC, Nearby or file-transfer tests have been run. Do not interpret automated codec tests or a compiled APK as device acceptance.
+**Basic physical NFC exchange passed in both directions, as reported by the developer on 2026-10-28.** Screenshots show successful greeting receipt in 67 ms and emulator response feedback; the developer confirmed both phones also worked with roles reversed. The reverse direction's screenshot was not supplied. Samsung API level and ADB/logcat evidence remain unrecorded; the original Windows build session had no ADB devices attached. Nearby and file-transfer hardware tests have not been performed.
+
+## Version 0.1.1 — emulator status fix
+
+The developer reported successful receiving with intermittent emulator-side completion/countdown confusion. The old screen always displayed the session countdown after response service, and its timer replaced a successful result with Session expired. A process-wide read counter also did not associate completion with a particular session.
+
+The registry now retains response-served status for its generation. Both the observer and periodic UI refresh read that state. Old/cancelled sessions cannot complete a new session; a served result hides the countdown and remains visible after the protocol deadline. Token expiry is still enforced, and Stop/background/rotation still clear the role. UI wording now says NFC session sent because serving a response alone is not an acknowledgement from the reader. The two-APDU wire protocol is unchanged.
+
+Seven regression tests cover late UI observation, post-success TTL expiry, unserved expiry, old-session results, cancellation/role switches, invalid commands and repeated taps. Windows `testDebugUnitTest assembleDebug lintDebug` passed in 2m 25s: **21 tests, zero failures/errors/skips**, successful APK packaging, and lint with zero errors/one Gradle update advisory. APK signature verification also passed. **Retesting the status fix on both physical devices is pending.** The original version 0.1.0 build measurements above are historical.
 
 ## Remaining work
 

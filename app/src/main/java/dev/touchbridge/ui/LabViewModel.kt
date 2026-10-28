@@ -18,16 +18,6 @@ import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 
-enum class Role { IDLE, EMULATE, SCAN }
-data class LabState(
-    val role: Role = Role.IDLE,
-    val title: String = "Ready to connect",
-    val detail: String = "Choose a role on each phone to test a real NFC exchange.",
-    val secondsLeft: Long = 0,
-    val busy: Boolean = false,
-    val success: Boolean = false,
-)
-
 class LabViewModel : ViewModel() {
     private val _state = MutableStateFlow(LabState())
     val state = _state.asStateFlow()
@@ -35,31 +25,33 @@ class LabViewModel : ViewModel() {
     private val reading = AtomicBoolean(false)
     private var epoch = 0L
     private var lastTap = 0L
+    private var emulationGeneration: Long? = null
 
     init {
         viewModelScope.launch {
-            NfcSessionRepository.readCount.collect { count ->
-                if (count > 0 && _state.value.role == Role.EMULATE) {
-                    _state.value = _state.value.copy(title = "Session read by the other phone",
-                        detail = "The reader received Hello from TouchBridge! NFC pairing metadata does not authenticate the peer.", success = true)
-                }
-            }
+            NfcSessionRepository.sessions.status.collect { updateEmulationStatus() }
         }
         viewModelScope.launch {
             while (true) {
                 delay(250)
-                if (_state.value.role == Role.EMULATE) {
-                    val remaining = NfcSessionRepository.sessions.remainingMillis()
-                    if (remaining == 0L) stop("Session expired", "Start Emulate again for a fresh 60-second session.")
-                    else _state.value = _state.value.copy(secondsLeft = (remaining + 999) / 1000)
-                }
+                if (_state.value.role == Role.EMULATE && !_state.value.success) updateEmulationStatus()
             }
         }
     }
 
+    private fun updateEmulationStatus() {
+        val sessions = NfcSessionRepository.sessions
+        val updated = _state.value.withEmulationStatus(sessions.status.value, emulationGeneration, sessions.remainingMillis())
+        if (_state.value.role == Role.EMULATE && updated.role == Role.IDLE) stop(updated.title, updated.detail)
+        else _state.value = updated
+    }
+
     fun choose(role: Role) {
         stop()
-        if (role == Role.EMULATE) NfcSessionRepository.sessions.start()
+        if (role == Role.EMULATE) {
+            NfcSessionRepository.sessions.start()
+            emulationGeneration = NfcSessionRepository.sessions.generation
+        }
         if (role == Role.SCAN) reader.activate()
         _state.value = when (role) {
             Role.EMULATE -> LabState(role, "Hold phones together", "On the other phone, choose Scan. Keep both screens unlocked.", 60)
@@ -70,6 +62,7 @@ class LabViewModel : ViewModel() {
 
     fun stop(title: String = "Ready to connect", detail: String = "Choose a role on each phone to test a real NFC exchange.") {
         epoch++
+        emulationGeneration = null
         NfcSessionRepository.sessions.stop()
         reader.close()
         _state.value = LabState(title = title, detail = detail)

@@ -2,6 +2,8 @@ package dev.touchbridge.nfc
 
 import java.nio.ByteBuffer
 import java.security.SecureRandom
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /** IDs are public correlation metadata, never proof of peer identity. */
 data class PeerSession(val id: String, val remainingMillis: Long, val message: String)
@@ -55,19 +57,32 @@ object SessionProtocol {
     }
 }
 
+data class EmulationSessionStatus(val generation: Long = 0, val active: Boolean = false, val served: Boolean = false)
+
 /** In-memory only. Monotonic time prevents wall-clock changes extending a session. */
 class SessionRegistry(private val now: () -> Long, private val random: SecureRandom = SecureRandom()) {
     private var id: ByteArray? = null
     private var expiry = 0L
-    var generation = 0L
-        private set
+    private val _status = MutableStateFlow(EmulationSessionStatus())
+    val status = _status.asStateFlow()
+    val generation: Long get() = _status.value.generation
 
     @Synchronized fun start() {
         id = ByteArray(16).also { random.nextBytes(it) }
         expiry = now() + SessionProtocol.LIFETIME_MS
-        generation++
+        _status.value = EmulationSessionStatus(generation + 1, active = true)
     }
-    @Synchronized fun stop() { id = null; expiry = 0; generation++ }
+    @Synchronized fun stop() {
+        id = null
+        expiry = 0
+        _status.value = EmulationSessionStatus(generation + 1)
+    }
+    /** Retained for late observers; a previous tap can never complete a new session. */
+    @Synchronized fun markServed(expectedGeneration: Long): Boolean {
+        if (generation != expectedGeneration || remainingMillis() == 0L) return false
+        _status.value = _status.value.copy(served = true)
+        return true
+    }
     @Synchronized fun remainingMillis(): Long = if (id == null) 0 else (expiry - now()).coerceAtLeast(0)
     @Synchronized fun payload(): ByteArray? {
         val current = id ?: return null
@@ -103,6 +118,7 @@ class ApduEngine(private val sessions: SessionRegistry, private val onRead: () -
         if (!command.contentEquals(SessionProtocol.getSession)) return error(0x6A86)
         if (selectedGeneration != sessions.generation) return error(0x6986)
         val payload = sessions.payload() ?: return error(0x6985)
+        if (!sessions.markServed(selectedGeneration!!)) return error(0x6986)
         onRead()
         return SessionProtocol.response(payload)
     }

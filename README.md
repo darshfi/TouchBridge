@@ -4,7 +4,7 @@ A native Kotlin / Compose NFC experiment for Pixel 9a and Galaxy S21 Ultra. Inst
 
 ## Current checkpoint
 
-Milestones 0–1: project foundation and real NFC reader/HCE implementation, including the versioned short-lived session protocol. **Physical phone validation is pending.** See [validation.md](docs/validation.md) for actual build results. Nearby, file transfer, share-sheet integration, contacts, Wi-Fi, and history are subsequent work; there are no pretend sharing buttons in this build.
+Milestones 0–1: project foundation and real NFC reader/HCE implementation, including the versioned short-lived session protocol. **The developer confirmed successful physical exchanges in both directions on Pixel 9a and Galaxy S21 Ultra on 2026-10-28.** Version 0.1.1 fixes the emulator's completion/countdown display; this change needs device retesting. See [validation.md](docs/validation.md) for build results and evidence. Nearby, file transfer, share-sheet integration, contacts, Wi-Fi, and history are subsequent work.
 
 The app shows a real reader result only after SELECT and GET_SESSION both succeed. Unit tests use a simulated transport and do not establish that either phone's NFC hardware works.
 
@@ -51,9 +51,9 @@ Expected build ending: `BUILD SUCCESSFUL`. Expected installation: `Success` for 
 2. On Samsung select **Emulate · share NFC session**. Its countdown starts at 60 seconds.
 3. On Pixel select **Scan · read the other phone**.
 4. Bring the backs of the phones together. Move them slowly relative to each other to align their NFC antennas; do not assume the antennas are in identical positions. Remove thick/magnetic cases if necessary. Hold briefly through the exchange.
-5. Pixel must show **NFC handshake successful**, **Hello from TouchBridge!**, protocol, a redacted session suffix, and elapsed milliseconds. Samsung should show **Session read by the other phone**. A session being read is not authenticated pairing.
+5. Pixel must show **NFC handshake successful**, **Hello from TouchBridge!**, protocol, a redacted session suffix, and elapsed milliseconds. Samsung should show **NFC session sent** with no countdown. Its result should remain visible after the original 60-second deadline; expired session metadata must still be rejected. The emulator has no receipt acknowledgement, so confirm the reader's screen too. NFC exchange does not authenticate the peer.
 6. Move the phones apart. Stop both roles, then **swap roles**: Pixel Emulate, Samsung Scan. Require the same real result.
-7. Run the failure/recovery matrix in [hardware-testing.md](docs/hardware-testing.md). Record the exact Git commit, device models/API levels, UI result, and sanitized logs. Neither direction is verified until both real phones pass.
+7. Run the failure/recovery matrix in [hardware-testing.md](docs/hardware-testing.md). Record the exact Git commit, device models/API levels, UI result, and sanitized logs. Basic exchanges in both directions have been reported successful; the status fix and remaining reliability scenarios need separate checks.
 
 The app requests foreground routing with `setPreferredService` for its category-other AID and releases it on pause. OEM routing, secure NFC settings, and wallet services can still affect discovery. Keep the app unlocked and active, retry alignment, and check NFC settings; do not replace the default payment app.
 
@@ -87,7 +87,7 @@ Leaving the app or rotating deliberately stops the current role. Restart explici
 
 The private repository is [darshfi/TouchBridge](https://github.com/darshfi/TouchBridge). The Gradle wrapper and its distribution SHA-256 are checked in. CI (`.github/workflows/android-ci.yml`) uses an Ubuntu runner, JDK 21, Android SDK, wrapper validation/caching via setup-gradle, unit tests, lint and a debug build. After success, **touchbridge-debug** is available under the workflow run's Artifacts for seven days. Reports are uploaded even on failure. Check [Actions](https://github.com/darshfi/TouchBridge/actions/workflows/android-ci.yml) for the actual result for each commit. No Play deployment or production signing exists.
 
-To install on your phone, sign into GitHub as the repository owner, open the latest successful Android CI run, and download **touchbridge-debug** from **Artifacts**. Extract the ZIP using your file manager, then open `app-debug.apk`. If prompted, permit APK installation for that browser/file manager. Install the same APK on both phones. GitHub's **Download ZIP** under the Code button contains source code and cannot be installed as an Android app. These are debug NFC Lab builds; physical NFC validation remains pending.
+To install on your phone, sign into GitHub as the repository owner, open the latest successful Android CI run, and download **touchbridge-debug** from **Artifacts**. Extract the ZIP using your file manager, then open `app-debug.apk`. If prompted, permit APK installation for that browser/file manager. Install the same APK on both phones. GitHub's **Download ZIP** under the Code button contains source code and cannot be installed as an Android app. CI generates a fresh debug signing key on each runner: uninstall the previous experimental build before installing a newer CI APK when the signatures differ. Uninstalling removes app data. These are debug NFC Lab builds; wireless sharing is not implemented yet.
 
 On another development computer, clone the private repository while signed in:
 

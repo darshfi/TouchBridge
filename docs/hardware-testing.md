@@ -1,6 +1,8 @@
-# Physical validation on Arch
+# Physical validation and Arch testing procedure
 
-Status: **not run**. There are no attached-phone results. Unit tests cannot validate RF behavior, OEM routing, or successful reader/HCE exchange.
+Status, 2026-10-28: **the developer reports successful NFC exchanges with each phone acting as reader and emulator.** Attached screenshots show a successful greeting in 67 ms and emulator-side response feedback (API 37). The developer explicitly confirmed the reverse direction also worked; its screenshot was not supplied. Samsung's API level and ADB/logcat results are still unrecorded. The OS used for the test was not specified. Unit tests remain distinct from this user-reported hardware evidence.
+
+The developer also reported intermittent emulator status/countdown confusion despite successful receipt. Version 0.1.1 retains response-served state per session, hides the countdown after serving GET_SESSION, and preserves the result after TTL expiry. **Device retest of this fix is pending.**
 
 ## Record evidence
 
@@ -32,8 +34,9 @@ Success evidence: reader UI shows `NFC handshake successful` plus `Hello from To
 
 | Test | Actions | Expected result | Actual |
 | --- | --- | --- | --- |
-| Pixel reads Samsung | Samsung Emulate, Pixel Scan, align backs within 60s | Reader greeting + elapsed time, HCE read feedback | Pending |
-| Samsung reads Pixel | Pixel Emulate, Samsung Scan | Same real result | Pending |
+| Pixel reads Samsung | Samsung Emulate, Pixel Scan, align backs within 60s | Reader greeting + elapsed time, HCE response feedback | Developer confirmed pass on 2026-10-28; emulator status issue reported |
+| Samsung reads Pixel | Pixel Emulate, Samsung Scan | Same real result | Developer confirmed pass on 2026-10-28; emulator status issue reported |
+| Emulator completion display (0.1.1) | Complete tap in each direction, separate phones, wait >60s | Emulator shows NFC session sent, hides countdown, retains result; unserved sessions still expire | Pending |
 | Both scan | Scan on both | No fabricated success; choose complementary roles | Pending |
 | Idle emulator | Stop emulator, keep reader scanning | No valid session / no handshake; no background session creation | Pending |
 | Expiry | Wait >60s on emulator | Session expired; reader cannot get a valid session | Pending |
