@@ -6,11 +6,11 @@
 
 Use the artifact from `fix/nearby-startup-diagnostics`, leaving `main` and `stable/nfc-verified` intact. On the advertiser, wait for **Ready to tap** before touching phones. During **Starting Nearby**, the NFC session is deliberately unavailable. If advertising fails, do not keep tapping: capture the full error code/name and expand Show diagnostics to capture Android API, Play services version and missing runtime permissions. This identifies the SDK failure without broadening permissions or guessing from the generic 0.2.0 error. Retest NFC Lab separately as a regression check.
 
-Version: 0.2.0. **Implemented; physical Nearby verification pending.** NFC-only exchanges and the sender-status fix were confirmed by the developer in both roles on 2026-10-28. Automated transports do not replace real Nearby testing.
+Version: **0.2.2**. The developer's 18:54 screen recordings on 2026-10-28 show successful Nearby connections with NFC roles swapped, and both phones showing Hello sent and Received. Happy-path radio delivery is now supported by device evidence; the unobserved reliability/offline tests below remain pending. See [validation.md](validation.md) for recording filenames and limits.
 
 ## Build and install
 
-Use the Windows or Arch commands in the README. Both phones must have the same 0.2.0 APK; check About. Prior CI APKs use different debug signing keys, so uninstall the old experimental build if Android rejects an update, then install on both phones:
+Use the Windows or Arch commands in the README. Both phones must have the same APK; check About. The recorded successful build is 0.2.2. Prior CI APKs use different debug signing keys, so uninstall the old experimental build if Android rejects an update, then install on both phones:
 
 ```bash
 ./gradlew testDebugUnitTest assembleDebug lintDebug
@@ -21,7 +21,7 @@ adb -s PIXEL_SERIAL shell am start -n dev.touchbridge/.MainActivity
 adb -s SAMSUNG_SERIAL shell am start -n dev.touchbridge/.MainActivity
 ```
 
-Expected: BUILD SUCCESSFUL, device list containing both authorized phones, Success for each installation. Record both Android versions/API levels and the exact Git commit. The app detects features/API levels at runtime; Samsung's version has not yet been supplied.
+Expected: BUILD SUCCESSFUL, device list containing both authorized phones, Success for each installation. Record both Android versions/API levels and the exact Git commit. Recorded diagnostics show Pixel API 37 and Samsung API 35.
 
 ## Happy path
 
@@ -38,7 +38,8 @@ Expected: BUILD SUCCESSFUL, device list containing both authorized phones, Succe
 
 | Scenario | Expected result | Result |
 | --- | --- | --- |
-| Tap, move apart, approve both, hello each direction | Both connected, both receive hello | Pending |
+| Tap, approve both, hello each direction, swap NFC roles | Both connected, both receive hello | Passed in developer's v0.2.2 recordings, 2026-10-28 |
+| Move phones apart after tap | Approved connection and hello remain usable | Physical separation not visible in recordings; pending confirmation |
 | Only one user accepts | No connected/send state; bounded wait, then timeout | Pending |
 | Reject on either phone | Connection closed; no hello | Pending |
 | Codes differ | Reject manually; do not proceed | Pending |
@@ -48,7 +49,8 @@ Expected: BUILD SUCCESSFUL, device list containing both authorized phones, Succe
 | System Location off on older Android | Enable Location guidance before discovery | Pending |
 | Play services missing/outdated | Availability error; NFC Lab unaffected | Pending |
 | Stop during advertise/discover/verification | Clears code/session, stops searches/endpoints; later callback cannot restore UI | Pending |
-| Cancel and immediately start again | New attempt works; no stale peer or old approval | Pending |
+| Stop a completed session, restart with swapped NFC roles | New attempt works | One successful reset/role-swap observed in recordings; repeated stress testing pending |
+| Cancel a pending attempt and immediately start again | New attempt works; no stale peer or old approval | Pending |
 | Background, lock or rotate | Both NFC and Nearby cleaned up; explicitly restart | Pending |
 | Disconnect/out of range during hello | Visible disconnect/failure, or bounded delivery timeout; no false success | Pending |
 | Pair within TTL, then wait over 60s before hello | Approved foreground channel remains usable | Pending |

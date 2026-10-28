@@ -4,7 +4,7 @@ A native Kotlin / Compose NFC experiment for Pixel 9a and Galaxy S21 Ultra. Inst
 
 ## Current checkpoint
 
-Version **0.2.0** adds NFC-bootstrapped Nearby Connections, matching-code approval on both phones, encrypted session matching, and an explicitly sent hello in either direction. **Nearby hardware validation is pending.** The developer confirmed physical NFC exchanges in both roles and the v0.1.1 sender-status fix on Pixel 9a and Galaxy S21 Ultra. See [validation.md](docs/validation.md) for evidence. File transfer, share-sheet receiving, contacts, Wi-Fi credentials, manual discovery and history remain subsequent work.
+Version **0.2.2** implements NFC-bootstrapped Nearby Connections, matching-code approval, encrypted session matching and an explicitly sent hello. **Developer recordings confirm the real-device happy path with both NFC roles and hello delivery in both directions** on Pixel 9a (API 37) and Galaxy S21 Ultra (API 35). Offline operation, physical separation and the remaining failure/recovery tests still need separate evidence. See [validation.md](docs/validation.md). File transfer, share-sheet receiving, contacts, Wi-Fi credentials, manual discovery and history remain subsequent work.
 
 The app shows a real reader result only after SELECT and GET_SESSION both succeed. Unit tests use a simulated transport and do not establish that either phone's NFC hardware works.
 

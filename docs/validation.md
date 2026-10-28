@@ -2,6 +2,17 @@
 
 Current checkpoint: v0.2.0 NFC-to-Nearby handoff. Earlier version measurements below are retained as historical build records.
 
+## Real-device happy-path evidence — v0.2.2
+
+Reviewed the developer's two screen recordings supplied on 2026-10-28:
+
+* `screen-20261028-185458-1793193855109.mp4`: Pixel 9a, API 37, TouchBridge 0.2.2, Play services 26.40.32.
+* `Screen_Recording_20261028_185457_TouchBridge.mp4`: Samsung Galaxy S21 Ultra, API 35, TouchBridge 0.2.2, Play services 26.34.36.
+
+Both recordings show advertising succeeding, NFC session exchange, Nearby requesting/approval/session verification reaching Connected, a Stop/reset followed by the NFC roles being swapped, and another successful connection. Final frames on **both phones** show Hello sent, Nearby delivery success and Received: Hello from the other phone. This establishes the real-device Nearby hello happy path in both directions, beyond the simulated unit tests. The installed version corresponds to code checkpoint `cc93757`; the APK manifest fix has passed this observed startup test.
+
+These are screen-recording observations, not ADB/logcat results. They do not establish physical distance between phones, internet being disabled, radio-off/permission-denial behavior, rejection handling, long-duration expiry, repeated stress tests or file transfer. No session identifiers or authentication codes are copied into this record. Original videos and extracted frames remain outside Git. Main and `stable/nfc-verified` remain unchanged pending developer merge confirmation.
+
 ## Implemented
 
 * Kotlin/Compose Material 3 Android project, Gradle wrapper, optional NFC/HCE capability declarations, NFC Lab / About, runtime capability diagnostics, light/dark themes and settings action.
@@ -48,7 +59,7 @@ Pure Kotlin tests exercise both coordinators communicating through a fake transp
 
 Nearby 19.5.1's metadata could not be read by the original Kotlin 2.2.10 compiler. Kotlin/Compose 2.4.21 compiled but triggered an internal Android lint analysis crash; Kotlin/Compose **2.3.21** reads the library successfully and runs lint without disabling its experimental-API checks. A dependency constraint raises Play services' transitive Fragment 1.1.0 to stable 1.9.1 for Activity Result permission compatibility. Runtime coroutines stay aligned with Nearby's 1.10.2 BOM; the test library matches it. Toolchain pins were checked against official documentation/Maven metadata, and builds use the wrapper with no local SDK/JDK paths committed.
 
-**Nearby physical validation is pending.** The developer's passed NFC/status tests do not establish Nearby discovery, authentication, offline delivery, or OEM permission behavior. Follow [nearby-testing.md](nearby-testing.md) on both devices, record the Samsung API level, and test roles in both directions.
+This v0.2.0 milestone originally awaited hardware testing. The v0.2.2 recordings documented above now establish successful Nearby setup and hello delivery in both roles/directions. Offline and failure/recovery testing remains pending in [nearby-testing.md](nearby-testing.md).
 
 ## Remaining work
 
@@ -68,6 +79,6 @@ On `fix/nearby-startup-diagnostics`, startup failures now retain sanitized SDK s
 
 Windows checks pass with **50 unit tests**, including startup error propagation, stale failure rejection, pre-readiness APDU rejection, and expired/cancelled activation. Final build/CI results accompany the test artifact. Device retest and the precise Nearby startup status remain pending. A passing build does not establish that this resolves the underlying SDK failure on the phones.
 
-Next: verify the real Nearby handoff and hello on Pixel/Samsung in both roles. Then implement SAF-backed file transfers, metadata/payload ordering, progress/cancellation, safe save, sharesheet, additional content types and history. File/content features, persistent trust and manual discovery fallback are not implemented yet.
+Next implementation milestone: SAF-backed file transfers, metadata/payload ordering, progress/cancellation and safe saving. Continue the outstanding Nearby reliability/offline tests independently. Share-sheet receiving, additional content types, history, persistent trust and manual discovery fallback are not implemented yet.
 
 See [hardware-testing.md](hardware-testing.md) for exact role-swap tests and required evidence, and [../README.md](../README.md) for Windows/Arch installation commands.
