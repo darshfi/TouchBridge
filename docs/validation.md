@@ -27,7 +27,7 @@ APK: `app/build/outputs/apk/debug/app-debug.apk` (12,007,952 bytes). SHA-256: `6
 
 The first environment setup needed official archive downloads with curl after Java downloads timed out. SDK archive checksums matched Google's repository metadata; the Gradle distribution matched its official SHA-256. This affects local setup only; no download mirror or local path was added to project configuration.
 
-**GitHub CI configured, not yet verified on GitHub.** No remote repository has been created or pushed.
+The original Windows checkpoint had CI configured but had not run on GitHub. The project has since been published to the private [darshfi/TouchBridge](https://github.com/darshfi/TouchBridge) repository. The first GitHub run stopped during SDK setup because the action's default `tools` package is no longer provided. The workflow now pins current command-line tools and requests only `platform-tools` before installing the required platform/build-tools. See [Actions](https://github.com/darshfi/TouchBridge/actions/workflows/android-ci.yml) for current execution results and downloadable APK artifacts.
 
 **Hardware validation pending.** `adb devices -l` returned an empty device list on Windows. No physical NFC, Nearby or file-transfer tests have been run. Do not interpret automated codec tests or a compiled APK as device acceptance.
 

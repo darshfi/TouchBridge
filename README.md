@@ -85,13 +85,15 @@ Leaving the app or rotating deliberately stops the current role. Restart explici
 
 ## Git, CI and delivery
 
-The Gradle wrapper and its distribution SHA-256 are checked in. CI (`.github/workflows/android-ci.yml`) uses an Ubuntu runner, JDK 21, Android SDK, wrapper validation/caching via setup-gradle, unit tests, lint and a debug build. After success, **touchbridge-debug** is available under the workflow run's Artifacts for seven days. Reports are uploaded even on failure. **CI configured, not yet verified on GitHub.** No remote was created or pushed; no Play deployment or production signing exists.
+The private repository is [darshfi/TouchBridge](https://github.com/darshfi/TouchBridge). The Gradle wrapper and its distribution SHA-256 are checked in. CI (`.github/workflows/android-ci.yml`) uses an Ubuntu runner, JDK 21, Android SDK, wrapper validation/caching via setup-gradle, unit tests, lint and a debug build. After success, **touchbridge-debug** is available under the workflow run's Artifacts for seven days. Reports are uploaded even on failure. Check [Actions](https://github.com/darshfi/TouchBridge/actions/workflows/android-ci.yml) for the actual result for each commit. No Play deployment or production signing exists.
 
-Create an empty **private** repository in GitHub when ready, then run these commands yourself using its actual URL:
+To install on your phone, sign into GitHub as the repository owner, open the latest successful Android CI run, and download **touchbridge-debug** from **Artifacts**. Extract the ZIP using your file manager, then open `app-debug.apk`. If prompted, permit APK installation for that browser/file manager. Install the same APK on both phones. GitHub's **Download ZIP** under the Code button contains source code and cannot be installed as an Android app. These are debug NFC Lab builds; physical NFC validation remains pending.
+
+On another development computer, clone the private repository while signed in:
 
 ```bash
-git remote add origin YOUR_PRIVATE_REPOSITORY_URL
-git push -u origin HEAD
+git clone https://github.com/darshfi/TouchBridge.git
+cd TouchBridge
 ```
 
 Use `git status` before switching computers. Commit or stash changes before `git pull --ff-only`; never overwrite uncommitted work. Commit locally, push, then pull on the other computer. GitLab can host the same Git repository, but this workflow runs on GitHub Actions only. Local debug signing keys differ by OS; generated APKs and private keys stay out of Git.
